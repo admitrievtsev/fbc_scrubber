@@ -1,5 +1,5 @@
 use std::fs;
-use std::string::String;
+use std::string::{String};
 use std::vec::Vec;
 
 const MAX_CHUNK_SIZE: usize = 24;
@@ -12,9 +12,9 @@ macro_rules! inc {
     };
 }
 
-type Chunk = Vec<char>;
+type Chunk = Vec<u8>;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct DictRecord {
     chunk: Chunk,
     occurrence_num: u32,
@@ -51,8 +51,8 @@ impl Analyser {
         }
     }
 
-    fn tostr(word: &[char]) -> String {
-        word.iter().collect()
+    fn tostr(word: &Vec<u8>) -> String {
+        String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
     }
 
     fn add_chunk(&mut self, chunk: Chunk) {
@@ -188,9 +188,8 @@ impl Analyser {
     }
 
     fn simple_dedup(&mut self, f_in: &str) {
-        let contents = fs::read_to_string(f_in).expect("Should have been able to read the file");
+        let contents = fs::read(f_in).expect("Should have been able to read the file");
         let input_length = contents.len();
-        let chars: Chunk = contents.chars().collect();
         let mut chunk_num = 0;
         for index_input in 0..input_length {
             if index_input % FIXED_CHUNKER_SIZE == 0 {
@@ -198,7 +197,7 @@ impl Analyser {
                 self.chunks.push(vec![]);
                 self.chunk_ids.push(chunk_num - 1);
             }
-            self.chunks[chunk_num - 1].push(chars[index_input]);
+            self.chunks[chunk_num - 1].push(contents[index_input]);
         }
     }
 
