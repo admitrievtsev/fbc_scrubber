@@ -186,7 +186,7 @@ impl Analyser {
     fn dict_count_size(&self) -> usize {
         return self.chunks.iter().fold(0, |acc, x| acc + x.len());
     }
-
+    #[warn(dead_code)]
     fn simple_dedup(&mut self, f_in: &str) {
         let contents = fs::read(f_in).expect("Should have been able to read the file");
         let input_length = contents.len();
