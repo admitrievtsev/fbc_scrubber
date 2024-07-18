@@ -4,7 +4,7 @@ use std::io;
 use chunkfs::Database;
 
 #[derive(Hash, PartialEq, Eq)]
-struct FBCKey {
+pub struct FBCKey {
     key: u32,
     state: bool
 }
