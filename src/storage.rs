@@ -1,3 +1,4 @@
+use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
@@ -5,8 +6,16 @@ use chunkfs::Database;
 
 #[derive(Hash, PartialEq, Eq)]
 pub struct FBCKey {
-    key: u32,
+    key: u64,
     state: bool
+}
+impl FBCKey {
+    pub fn new(key: u64, state: bool) -> FBCKey {
+        FBCKey {
+            key,
+            state
+        }
+    }
 }
 
 

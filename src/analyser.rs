@@ -12,11 +12,9 @@ macro_rules! inc {
     };
 }
 
-type Chunk = Vec<u8>;
-
 #[derive(Default, Debug)]
 struct DictRecord {
-    chunk: Chunk,
+    chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
 }
@@ -25,13 +23,13 @@ struct DictRecord {
 pub struct Analyser {
     dict: Vec<DictRecord>, // hashmap? chunk_map
     chunk_ids: Vec<usize>, // hashset?
-    chunks: Vec<Chunk>,    // u8 instead
+    chunks: Vec<Vec<u8>>,    // u8 instead
 }
 
 impl Analyser {
-    fn make_dict(&mut self, first_stage_chunk: Chunk) {
+    pub fn make_dict(&mut self, first_stage_chunk: &Vec<u8>) {
         //rewrite with return dictionary
-        let mut temp_chunks: Vec<Chunk> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
+        let mut temp_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
         for slice_index in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
             for char in first_stage_chunk.iter().take(slice_index + 1) {
                 temp_chunks[slice_index - MIN_CHUNK_SIZE].push(*char);
@@ -55,7 +53,7 @@ impl Analyser {
         String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
     }
 
-    fn add_chunk(&mut self, chunk: Chunk) {
+    fn add_chunk(&mut self, chunk: Vec<u8>) {
         let str_size = chunk.len();
         let mut chunk_dict_id = 0;
         for dict_chunk in self.dict.iter() {
@@ -73,7 +71,7 @@ impl Analyser {
             inc!(chunk_dict_id);
         }
         self.dict.push(DictRecord {
-            chunk,
+            chunk: chunk.to_vec(),
             occurrence_num: 1,
             size: str_size,
         })
@@ -203,7 +201,7 @@ impl Analyser {
 
     fn throw_chunks_to_maker(&mut self) {
         for chunk_index in 0..self.chunks.len() {
-            self.make_dict((self.chunks[chunk_index]).clone());
+            self.make_dict(&(self.chunks[chunk_index]).clone());
         }
         self.dict = self
             .dict
