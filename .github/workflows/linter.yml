@@ -1,0 +1,30 @@
+name: Linter
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    name: Rust fmt check
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup rust toolchain with rustfmt
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt
+      - name: Run fmt check
+        uses: actions-rust-lang/rustfmt@v1
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: cargo clippy
