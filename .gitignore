@@ -17,4 +17,3 @@ Cargo.lock
 # Added by cargo
 
 /target
-/test_files_output/lowout.txt

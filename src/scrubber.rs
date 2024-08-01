@@ -1,15 +1,10 @@
-
 use std::time::Instant;
 use chunkfs::{ChunkHash, Data, Database, DataContainer, Scrub, ScrubMeasurements};
 use crate::analyser::Analyser;
 use crate::storage::FBCKey;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::ptr::hash;
 
-#[cfg(feature = "hashers")]
-pub mod hashers;
-
-
+// ChunkFS scrubber implementation
 pub struct FBCScrubber {
     analyser: Analyser,
 }
@@ -56,6 +51,7 @@ where
     }
 }
 
+//Hashcode that uses chunker to put it into target_map
 fn hash_chunk(data_ptr: &Vec<u8>) -> u64{
     let mut hasher = DefaultHasher::new();
     Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);

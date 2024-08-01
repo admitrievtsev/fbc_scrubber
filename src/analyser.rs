@@ -2,33 +2,40 @@ use std::fs;
 use std::string::{String};
 use std::vec::Vec;
 
+//Max size of frequent chunk that can be found by analyser
 const MAX_CHUNK_SIZE: usize = 24;
+//DEBUG OLNY || Parameter of FSChunker
 const FIXED_CHUNKER_SIZE: usize = 128;
-const MIN_CHUNK_SIZE: usize = 7;
 
+//Min size of frequent chunk that can be found by analyser
+const MIN_CHUNK_SIZE: usize = 8;
+
+//Macros that I use to increase value by 1
 macro_rules! inc {
     ($x:expr) => {
         $x += 1
     };
 }
 
-#[derive(Default, Debug)]
+
+//Struct that provide occurrences counting during analysis of data
+#[derive(Default)]
 struct DictRecord {
     chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
 }
 
+//Struct that provide frequency analysis for chunks
 #[derive(Default)]
 pub struct Analyser {
-    dict: Vec<DictRecord>, // hashmap? chunk_map
-    chunk_ids: Vec<usize>, // hashset?
-    chunks: Vec<Vec<u8>>,    // u8 instead
+    dict: Vec<DictRecord>,
+    chunk_ids: Vec<usize>,
+    chunks: Vec<Vec<u8>>,
 }
 
 impl Analyser {
     pub fn make_dict(&mut self, first_stage_chunk: &Vec<u8>) {
-        //rewrite with return dictionary
         let mut temp_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
         for slice_index in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
             for char in first_stage_chunk.iter().take(slice_index + 1) {
@@ -49,10 +56,12 @@ impl Analyser {
         }
     }
 
+    //This method is to print chunking results out
     fn tostr(word: &Vec<u8>) -> String {
         String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
     }
 
+    //Updating analyser occurrences counter
     fn add_chunk(&mut self, chunk: Vec<u8>) {
         let str_size = chunk.len();
         let mut chunk_dict_id = 0;
@@ -77,6 +86,7 @@ impl Analyser {
         })
     }
 
+    //The main method which makes text dedup || DEBUG ONLY
     pub fn deduplicate(&mut self, file_in: &str, file_out: &str) {
         self.simple_dedup(file_in);
         self.throw_chunks_to_maker();
@@ -84,6 +94,7 @@ impl Analyser {
         self.reduplicate(file_out);
     }
 
+    //Method that write text dedup out || DEBUG ONLY
     fn reduplicate(&self, file_out: &str) {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
@@ -92,6 +103,7 @@ impl Analyser {
         fs::write(file_out, string_out).expect("Unable to write the file");
     }
 
+    //This method contains FBC chunker implementation
     fn fbc_dedup(&mut self) {
         for dict_index in 0..self.dict.len() {
             for chunk_index in 0..self.chunks.len() {
@@ -154,6 +166,8 @@ impl Analyser {
             }
         }
     }
+
+    // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: usize, first: usize, second: usize) {
         let mut temp_vec: Vec<usize> = Vec::with_capacity(self.chunks.len() + 1);
         for index in 0..self.chunk_ids.len() {
@@ -167,6 +181,7 @@ impl Analyser {
         self.chunk_ids = temp_vec
     }
 
+    // Slicing chunk on 3 different
     fn replace_all_three(&mut self, to_change: usize, first: usize, second: usize, third: usize) {
         let mut temp_vec: Vec<usize> = vec![];
         for index in 0..self.chunk_ids.len() {
@@ -180,11 +195,16 @@ impl Analyser {
         }
         self.chunk_ids = temp_vec
     }
-    #[warn(dead_code)]
+
+    // Optimization Method
+    // You can call this method to reduce analyser records with low frequency
+    // It will force scrubber to run faster but also will reduce dedup gain
+
     fn dict_count_size(&self) -> usize {
         return self.chunks.iter().fold(0, |acc, x| acc + x.len());
     }
-    #[warn(dead_code)]
+
+    // FSDedup Chunker
     fn simple_dedup(&mut self, f_in: &str) {
         let contents = fs::read(f_in).expect("Should have been able to read the file");
         let input_length = contents.len();
