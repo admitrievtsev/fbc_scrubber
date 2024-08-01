@@ -1,5 +1,5 @@
 use std::fs;
-use std::string::{String};
+use std::string::String;
 use std::vec::Vec;
 
 //Max size of frequent chunk that can be found by analyser
@@ -16,7 +16,6 @@ macro_rules! inc {
         $x += 1
     };
 }
-
 
 //Struct that provide occurrences counting during analysis of data
 #[derive(Default)]

@@ -1,8 +1,8 @@
-use std::time::Instant;
-use chunkfs::{ChunkHash, Data, Database, DataContainer, Scrub, ScrubMeasurements};
 use crate::analyser::Analyser;
 use crate::storage::FBCKey;
+use chunkfs::{ChunkHash, Data, DataContainer, Database, Scrub, ScrubMeasurements};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::time::Instant;
 
 // ChunkFS scrubber implementation
 pub struct FBCScrubber {
@@ -11,7 +11,7 @@ pub struct FBCScrubber {
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
         FBCScrubber {
-            analyser: Analyser::default()
+            analyser: Analyser::default(),
         }
     }
 }
@@ -23,9 +23,10 @@ where
     fn scrub<'a>(
         &mut self,
         database: &mut B,
-        target_map: &mut Box<dyn Database<FBCKey, Vec<u8>>>
-    )  -> Result<ScrubMeasurements, std::io::Error>
-    where Hash: 'a,
+        target_map: &mut Box<dyn Database<FBCKey, Vec<u8>>>,
+    ) -> Result<ScrubMeasurements, std::io::Error>
+    where
+        Hash: 'a,
     {
         let mut processed_data = 0;
         let mut data_left = 0;
@@ -37,8 +38,10 @@ where
                     self.analyser.make_dict(data_ptr);
                     let y = data_ptr.to_vec().as_slice();
                     let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
-                    target_map.insert(tmp_key, data_ptr.to_vec().clone()).unwrap()
-                },
+                    target_map
+                        .insert(tmp_key, data_ptr.to_vec().clone())
+                        .unwrap()
+                }
                 _ => {}
             }
         }
@@ -52,9 +55,8 @@ where
 }
 
 //Hashcode that uses chunker to put it into target_map
-fn hash_chunk(data_ptr: &Vec<u8>) -> u64{
+fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
     let mut hasher = DefaultHasher::new();
     Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
     return hasher.finish();
 }
-
