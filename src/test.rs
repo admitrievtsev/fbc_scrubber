@@ -14,7 +14,8 @@ mod tests {
         let expected = fs::read_to_string(file_in).expect("Should have been able to read the file");
         let actual = fs::read_to_string(file_out).expect("Should have been able to read the file");
         assert_eq!(expected, actual);
-        fs::remove_file("fbc_topic_output.txt").expect("File lowout.txt not exists in current directory");
+        fs::remove_file("fbc_topic_output.txt")
+            .expect("File lowout.txt not exists in current directory");
     }
 
     #[test]
@@ -28,6 +29,7 @@ mod tests {
         let expected = fs::read_to_string(file_in).expect("Should have been able to read the file");
         let actual = fs::read_to_string(file_out).expect("Should have been able to read the file");
         assert_eq!(expected, actual);
-        fs::remove_file("orient_express_output.txt").expect("File lowout.txt not exists in current directory");
+        fs::remove_file("orient_express_output.txt")
+            .expect("File lowout.txt not exists in current directory");
     }
 }
