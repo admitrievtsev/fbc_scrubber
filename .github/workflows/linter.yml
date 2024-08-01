@@ -13,7 +13,6 @@ jobs:
   clippy:
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    container: docker://ghcr.io/linkerd/dev:v36-rust
     steps:
       - uses: actions/checkout@v3
       - run: cargo clippy
@@ -21,7 +20,6 @@ jobs:
   fmt:
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    container: docker://ghcr.io/linkerd/dev:v36-rust
     steps:
       - uses: actions/checkout@v3
       - run: cargo fmt --check
