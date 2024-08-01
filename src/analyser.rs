@@ -1,5 +1,5 @@
 use std::fs;
-use std::string::String;
+use std::string::{String};
 use std::vec::Vec;
 
 const MAX_CHUNK_SIZE: usize = 24;
@@ -12,11 +12,9 @@ macro_rules! inc {
     };
 }
 
-type Chunk = Vec<char>;
-
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct DictRecord {
-    chunk: Chunk,
+    chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
 }
@@ -25,13 +23,13 @@ struct DictRecord {
 pub struct Analyser {
     dict: Vec<DictRecord>, // hashmap? chunk_map
     chunk_ids: Vec<usize>, // hashset?
-    chunks: Vec<Chunk>,    // u8 instead
+    chunks: Vec<Vec<u8>>,    // u8 instead
 }
 
 impl Analyser {
-    fn make_dict(&mut self, first_stage_chunk: Chunk) {
+    pub fn make_dict(&mut self, first_stage_chunk: &Vec<u8>) {
         //rewrite with return dictionary
-        let mut temp_chunks: Vec<Chunk> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
+        let mut temp_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
         for slice_index in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
             for char in first_stage_chunk.iter().take(slice_index + 1) {
                 temp_chunks[slice_index - MIN_CHUNK_SIZE].push(*char);
@@ -51,11 +49,11 @@ impl Analyser {
         }
     }
 
-    fn tostr(word: &[char]) -> String {
-        word.iter().collect()
+    fn tostr(word: &Vec<u8>) -> String {
+        String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
     }
 
-    fn add_chunk(&mut self, chunk: Chunk) {
+    fn add_chunk(&mut self, chunk: Vec<u8>) {
         let str_size = chunk.len();
         let mut chunk_dict_id = 0;
         for dict_chunk in self.dict.iter() {
@@ -73,7 +71,7 @@ impl Analyser {
             inc!(chunk_dict_id);
         }
         self.dict.push(DictRecord {
-            chunk,
+            chunk: chunk.to_vec(),
             occurrence_num: 1,
             size: str_size,
         })
@@ -186,11 +184,10 @@ impl Analyser {
     fn dict_count_size(&self) -> usize {
         return self.chunks.iter().fold(0, |acc, x| acc + x.len());
     }
-
+    #[warn(dead_code)]
     fn simple_dedup(&mut self, f_in: &str) {
-        let contents = fs::read_to_string(f_in).expect("Should have been able to read the file");
+        let contents = fs::read(f_in).expect("Should have been able to read the file");
         let input_length = contents.len();
-        let chars: Chunk = contents.chars().collect();
         let mut chunk_num = 0;
         for index_input in 0..input_length {
             if index_input % FIXED_CHUNKER_SIZE == 0 {
@@ -198,13 +195,13 @@ impl Analyser {
                 self.chunks.push(vec![]);
                 self.chunk_ids.push(chunk_num - 1);
             }
-            self.chunks[chunk_num - 1].push(chars[index_input]);
+            self.chunks[chunk_num - 1].push(contents[index_input]);
         }
     }
 
     fn throw_chunks_to_maker(&mut self) {
         for chunk_index in 0..self.chunks.len() {
-            self.make_dict((self.chunks[chunk_index]).clone());
+            self.make_dict(&(self.chunks[chunk_index]).clone());
         }
         self.dict = self
             .dict
