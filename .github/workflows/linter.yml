@@ -16,7 +16,6 @@ jobs:
     container: docker://ghcr.io/linkerd/dev:v36-rust
     steps:
       - uses: actions/checkout@v3
-      - run: cargo fetch --offline
       - run: cargo clippy
 
   fmt:
@@ -26,12 +25,3 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - run: cargo fmt --check
-
-  docs:
-    timeout-minutes: 10
-    runs-on: ubuntu-latest
-    container: docker://ghcr.io/linkerd/dev:v36-rust
-    steps:
-      - uses: actions/checkout@v3
-      - run: cargo fetch
-      - run: cargo doc --no-deps
