@@ -3,12 +3,12 @@ use std::string::String;
 use std::vec::Vec;
 
 //Max size of frequent chunk that can be found by analyser
-const MAX_CHUNK_SIZE: usize = 24;
+const MAX_CHUNK_SIZE: usize = 20;
 //DEBUG OLNY || Parameter of FSChunker
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
-const MIN_CHUNK_SIZE: usize = 8;
+const MIN_CHUNK_SIZE: usize = 4;
 
 //Macros that I use to increase value by 1
 macro_rules! inc {
@@ -67,12 +67,12 @@ impl Analyser {
         for dict_chunk in self.dict.iter() {
             if dict_chunk.size == str_size {
                 for char_index in 0..str_size {
-                    if char_index == str_size {
-                        inc!(self.dict[chunk_dict_id].occurrence_num);
-                        return;
-                    }
                     if dict_chunk.chunk[char_index] != chunk[char_index] {
                         break;
+                    }
+                    if char_index == str_size - 1 {
+                        inc!(self.dict[chunk_dict_id].occurrence_num);
+                        return;
                     }
                 }
             }
@@ -221,6 +221,11 @@ impl Analyser {
     fn throw_chunks_to_maker(&mut self) {
         for chunk_index in 0..self.chunks.len() {
             self.make_dict(&(self.chunks[chunk_index]).clone());
+        }
+        for i in self.dict.iter(){
+            if(i.occurrence_num > 2){
+                println!("{:?}, {}, {}", i.chunk, i.occurrence_num, i.size)
+            }
         }
         self.dict = self
             .dict
