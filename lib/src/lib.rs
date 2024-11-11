@@ -1,9 +1,9 @@
 mod analyser;
-mod lib;
-
+pub mod storage;
+mod test;
 
 use crate::analyser::Analyser;
-use crate::lib::FBCKey;
+use crate::storage::FBCKey;
 use chunkfs::{ChunkHash, Data, DataContainer, Database, Scrub, ScrubMeasurements};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;

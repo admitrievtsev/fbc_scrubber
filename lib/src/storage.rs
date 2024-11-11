@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct FBCKey {
     key: u64,
     state: bool,
@@ -13,6 +13,7 @@ impl FBCKey {
     pub fn new(key: u64, state: bool) -> FBCKey {
         FBCKey { key, state }
     }
+
 }
 
 pub struct FBCMap {
