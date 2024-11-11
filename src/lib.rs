@@ -1,66 +1,47 @@
-mod analyser;
-mod storage;
+use chunkfs::Database;
+use std::collections::hash_map::Keys;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::io;
 
-
-use crate::analyser::Analyser;
-use crate::storage::FBCKey;
-use chunkfs::{ChunkHash, Data, DataContainer, Database, Scrub, ScrubMeasurements};
-use std::hash::{DefaultHasher, Hash, Hasher};
-use std::time::Instant;
-
-// ChunkFS scrubber implementation
-pub struct FBCScrubber {
-    analyser: Analyser,
+#[derive(Hash, PartialEq, Eq)]
+pub struct FBCKey {
+    key: u64,
+    state: bool,
 }
-impl FBCScrubber {
-    pub fn new() -> FBCScrubber {
-        FBCScrubber {
-            analyser: Analyser::default(),
-        }
-    }
-}
-impl<Hash: ChunkHash, B> Scrub<Hash, B, FBCKey> for FBCScrubber
-where
-    B: Database<Hash, DataContainer<FBCKey>>,
-    for<'a> &'a mut B: IntoIterator<Item = (&'a Hash, &'a mut DataContainer<FBCKey>)>,
-{
-    fn scrub<'a>(
-        &mut self,
-        database: &mut B,
-        target_map: &mut Box<dyn Database<FBCKey, Vec<u8>>>,
-    ) -> Result<ScrubMeasurements, std::io::Error>
-    where
-        Hash: 'a,
-    {
-        let mut processed_data = 0;
-        let mut data_left = 0;
-        let start_time = Instant::now();
-        for (_, data_container) in database.into_iter() {
-            let mut chunk = data_container.extract();
-            match chunk {
-                Data::Chunk(data_ptr) => {
-                    self.analyser.make_dict(data_ptr);
-                    let y = data_ptr.to_vec().as_slice();
-                    let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
-                    target_map
-                        .insert(tmp_key, data_ptr.to_vec().clone())
-                        .unwrap()
-                }
-                _ => {}
-            }
-        }
-        let running_time = start_time.elapsed();
-        Ok(ScrubMeasurements {
-            processed_data,
-            running_time,
-            data_left,
-        })
+impl FBCKey {
+    pub fn new(key: u64, state: bool) -> FBCKey {
+        FBCKey { key, state }
     }
 }
 
-//Hashcode that uses chunker to put it into target_map
-fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
-    return hasher.finish();
+pub struct FBCMap {
+    fbc_hashmap: HashMap<FBCKey, Vec<u8>>,
+}
+
+impl FBCMap {
+    pub fn new() -> FBCMap {
+        FBCMap {
+            fbc_hashmap: HashMap::default(),
+        }
+    }
+}
+impl Database<FBCKey, Vec<u8>> for FBCMap {
+    fn insert(&mut self, fbc_hash: FBCKey, chunk: Vec<u8>) -> io::Result<()> {
+        self.fbc_hashmap.insert(fbc_hash, chunk);
+        Ok(())
+    }
+
+    fn get(&self, hash: &FBCKey) -> io::Result<Vec<u8>> {
+        let chunk = self.fbc_hashmap.get(hash).cloned().unwrap();
+        Ok(chunk)
+    }
+
+    fn remove(&mut self, hash: &FBCKey) {
+        self.fbc_hashmap.remove(hash);
+    }
+
+    fn contains(&self, key: &FBCKey) -> bool {
+        self.fbc_hashmap.contains_key(key)
+    }
 }
