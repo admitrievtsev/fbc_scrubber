@@ -1,0 +1,10 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+fbc_scrubber = { git = "https://github.com/admitrievtsev/fbc_scrubber.git" }
+chunkfs = { git = "https://github.com/Piletskii-Oleg/chunkfs.git", branch = "SBC-FBC-support",  features = ["hashers", "chunkers"] }
+rand = "0.8.5"
