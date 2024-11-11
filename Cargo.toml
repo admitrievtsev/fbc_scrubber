@@ -1,5 +1,5 @@
 [package]
-name = "fbc-chunker"
+name = "fbc_scrubber"
 version = "0.1.0"
 edition = "2021"
 
