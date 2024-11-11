@@ -1,3 +1,7 @@
+mod analyser;
+mod storage;
+
+
 use crate::analyser::Analyser;
 use crate::storage::FBCKey;
 use chunkfs::{ChunkHash, Data, DataContainer, Database, Scrub, ScrubMeasurements};

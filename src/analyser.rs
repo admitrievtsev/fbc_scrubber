@@ -8,7 +8,7 @@ const MAX_CHUNK_SIZE: usize = 20;
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
-const MIN_CHUNK_SIZE: usize = 4;
+const MIN_CHUNK_SIZE: usize = 8;
 
 //Macros that I use to increase value by 1
 macro_rules! inc {
@@ -232,5 +232,9 @@ impl Analyser {
             .drain(..)
             .filter(|x| x.occurrence_num > 1)
             .collect();
+        self.fbc_dedup();
+        println!("{:?}", self.chunk_ids);
+
+        println!("{:?}", self.chunks)
     }
 }
