@@ -7,7 +7,7 @@ use chunkfs::FileSystem;
 use fbc_scrubber::storage::FBCMap;
 use fbc_scrubber::FBCScrubber;
 use std::collections::HashMap;
-use std::io;
+use std::{fs, io};
 
 fn main() -> io::Result<()> {
     /*
@@ -22,7 +22,9 @@ fn main() -> io::Result<()> {
         Sha256Hasher::default(),
     );
     let mut handle = fs.create_file("file".to_string(), SuperChunker::new(), true)?;
-    let data = vec![10; 1024 * 1024];
+    let data= fs::read("files/lowinput.txt").expect("Should have been able to read the file");
+
+
     fs.write_to_file(&mut handle, &data)?;
     fs.close_file(handle)?;
 
