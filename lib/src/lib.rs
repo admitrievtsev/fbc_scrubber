@@ -1,4 +1,4 @@
-mod analyser;
+pub mod analyser;
 pub mod storage;
 mod test;
 
@@ -10,7 +10,7 @@ use std::time::Instant;
 
 // ChunkFS scrubber implementation
 pub struct FBCScrubber {
-    analyser: Analyser,
+    pub analyser: Analyser,
 }
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
@@ -28,19 +28,40 @@ where
         &mut self,
         database: &mut B,
         target_map: &mut Box<dyn Database<FBCKey, Vec<u8>>>,
+
     ) -> Result<ScrubMeasurements, std::io::Error>
     where
         Hash: 'a,
     {
         let mut processed_data = 0;
         let mut data_left = 0;
+        let mut cdc_data = 0;
         let start_time = Instant::now();
+        let mut kdata = 0;
         for (_, data_container) in database.into_iter() {
             let mut chunk = data_container.extract();
             match chunk {
                 Data::Chunk(data_ptr) => {
+                    kdata += data_ptr.len() + 8;
+                }
+                _ => {}
+            }
+        }
+
+        for (_, data_container) in database.into_iter() {
+            let mut chunk = data_container.extract();
+            match chunk {
+                Data::Chunk(data_ptr) => {
+                    println!("Data Left: ({}/{}) Scrubbed: % {}", cdc_data, kdata, (cdc_data as f32 / kdata as f32) * 100.0);
+
+                    cdc_data += data_ptr.len() + 8;
+
+
                     self.analyser.make_dict(data_ptr);
-                    let y = data_ptr.to_vec().as_slice();
+                    if(cdc_data > 150000){
+                        break
+                    }
+                    let y = data_ptr.to_vec();
                     let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
                     target_map
                         .insert(tmp_key, data_ptr.to_vec().clone())
@@ -49,6 +70,9 @@ where
                 _ => {}
             }
         }
+        self.analyser.print_dict();
+        processed_data = cdc_data;
+        data_left = self.analyser.fbc_dedup();
         let running_time = start_time.elapsed();
         Ok(ScrubMeasurements {
             processed_data,

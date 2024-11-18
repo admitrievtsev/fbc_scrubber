@@ -1,14 +1,17 @@
 use std::fs;
 use std::string::String;
 use std::vec::Vec;
+use std::hash::{DefaultHasher, Hash, Hasher};
+
+use chunkfs::Chunk;
 
 //Max size of frequent chunk that can be found by analyser
-const MAX_CHUNK_SIZE: usize = 20;
+const MAX_CHUNK_SIZE: usize = 8;
 //DEBUG OLNY || Parameter of FSChunker
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
-const MIN_CHUNK_SIZE: usize = 8;
+const MIN_CHUNK_SIZE: usize = 7;
 
 //Macros that I use to increase value by 1
 macro_rules! inc {
@@ -23,6 +26,7 @@ struct DictRecord {
     chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
+    hash: u64
 }
 
 //Struct that provide frequency analysis for chunks
@@ -53,8 +57,17 @@ impl Analyser {
                 self.add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone());
             }
         }
-    }
+        self.chunk_ids.push(self.chunks.len());
+        self.chunks.push(first_stage_chunk.to_vec().clone());
 
+    }
+    pub fn print_dict(&self) {
+        for i in self.dict.iter() {
+            if(i.occurrence_num > 1) {
+                println!("chunk: {:?} occurence: {}", i.chunk, i.occurrence_num)
+            }
+        }
+    }
     //This method is to print chunking results out
     fn tostr(word: &Vec<u8>) -> String {
         String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
@@ -64,17 +77,14 @@ impl Analyser {
     fn add_chunk(&mut self, chunk: Vec<u8>) {
         let str_size = chunk.len();
         let mut chunk_dict_id = 0;
+        let mut hasher = DefaultHasher::new();
+        hasher.write(chunk.as_slice());
+        let chunk_hash = hasher.finish();
+
         for dict_chunk in self.dict.iter() {
-            if dict_chunk.size == str_size {
-                for char_index in 0..str_size {
-                    if dict_chunk.chunk[char_index] != chunk[char_index] {
-                        break;
-                    }
-                    if char_index == str_size - 1 {
-                        inc!(self.dict[chunk_dict_id].occurrence_num);
-                        return;
-                    }
-                }
+            if dict_chunk.hash == chunk_hash {
+                inc!(self.dict[chunk_dict_id].occurrence_num);
+                return;
             }
             inc!(chunk_dict_id);
         }
@@ -82,7 +92,8 @@ impl Analyser {
             chunk: chunk.to_vec(),
             occurrence_num: 1,
             size: str_size,
-        })
+            hash: chunk_hash
+        });
     }
 
     //The main method which makes text dedup || DEBUG ONLY
@@ -99,12 +110,17 @@ impl Analyser {
         for id in self.chunk_ids.iter() {
             string_out.push_str(&Self::tostr(&self.chunks[*id]));
         }
+        //println!("PRINT TO FILE");
+        println!("{}", string_out.len());
         fs::write(file_out, string_out).expect("Unable to write the file");
     }
 
     //This method contains FBC chunker implementation
-    fn fbc_dedup(&mut self) {
+    pub fn fbc_dedup(&mut self) -> usize {
         for dict_index in 0..self.dict.len() {
+            if (dict_index % 1000 == 0){
+                println!("Checked: {}", (dict_index as f32 / self.dict.len() as f32) * 100.0)
+            }
             for chunk_index in 0..self.chunks.len() {
                 if self.dict[dict_index].chunk.len() < self.chunks[chunk_index].len() {
                     for chunk_char in
@@ -164,6 +180,7 @@ impl Analyser {
                 }
             }
         }
+        return self.dict_count_size() + self.chunk_ids.len() * 8;
     }
 
     // Slicing chunk on 2 different
@@ -192,13 +209,20 @@ impl Analyser {
                 temp_vec.push(self.chunk_ids[index]);
             }
         }
-        self.chunk_ids = temp_vec
+        self.chunk_ids = temp_vec;
+        //println!("{:?}",self.chunk_ids);
     }
 
     // Optimization Method
     // You can call this method to reduce analyser records with low frequency
     // It will force scrubber to run faster but also will reduce dedup gain
-
+    pub fn reduce_low_occur(&mut self) {
+        self.dict = self
+            .dict
+            .drain(..)
+            .filter(|x| x.occurrence_num > 1)
+            .collect();
+    }
     fn dict_count_size(&self) -> usize {
         return self.chunks.iter().fold(0, |acc, x| acc + x.len());
     }
@@ -206,35 +230,22 @@ impl Analyser {
     // FSDedup Chunker
     fn simple_dedup(&mut self, f_in: &str) {
         let contents = fs::read(f_in).expect("Should have been able to read the file");
-        let input_length = contents.len();
-        let mut chunk_num = 0;
-        for index_input in 0..input_length {
-            if index_input % FIXED_CHUNKER_SIZE == 0 {
-                inc!(chunk_num);
-                self.chunks.push(vec![]);
-                self.chunk_ids.push(chunk_num - 1);
-            }
-            self.chunks[chunk_num - 1].push(contents[index_input]);
-        }
+        println!("{}", contents.len());
+            self.make_dict(&contents);
+
     }
 
     fn throw_chunks_to_maker(&mut self) {
-        for chunk_index in 0..self.chunks.len() {
-            self.make_dict(&(self.chunks[chunk_index]).clone());
-        }
-        for i in self.dict.iter(){
-            if(i.occurrence_num > 2){
-                println!("{:?}, {}, {}", i.chunk, i.occurrence_num, i.size)
-            }
-        }
+
+        //self.print_dict();
         self.dict = self
             .dict
             .drain(..)
             .filter(|x| x.occurrence_num > 1)
             .collect();
         self.fbc_dedup();
-        println!("{:?}", self.chunk_ids);
+        println!("{:?}", self.chunk_ids.len());
+        println!("{:?}", self.chunks.len());
 
-        println!("{:?}", self.chunks)
     }
 }
