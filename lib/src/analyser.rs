@@ -6,12 +6,12 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use chunkfs::Chunk;
 
 //Max size of frequent chunk that can be found by analyser
-const MAX_CHUNK_SIZE: usize = 8;
+const MAX_CHUNK_SIZE: usize = 64;
 //DEBUG OLNY || Parameter of FSChunker
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
-const MIN_CHUNK_SIZE: usize = 7;
+const MIN_CHUNK_SIZE: usize = 63;
 
 //Macros that I use to increase value by 1
 macro_rules! inc {
@@ -45,8 +45,8 @@ impl Analyser {
                 temp_chunks[slice_index - MIN_CHUNK_SIZE].push(*char);
             }
         }
-
-        for start_index in 1..first_stage_chunk.len() - MAX_CHUNK_SIZE {
+        let mut start_index = 1;
+        while start_index < first_stage_chunk.len() - MAX_CHUNK_SIZE {
             for chunk_size in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
                 for char_index in 1..chunk_size + 1 {
                     temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index - 1] =
@@ -54,11 +54,12 @@ impl Analyser {
                 }
                 temp_chunks[chunk_size - MIN_CHUNK_SIZE][chunk_size] =
                     first_stage_chunk[start_index + chunk_size];
-                self.add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone());
+                start_index += self.add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone());
             }
         }
         self.chunk_ids.push(self.chunks.len());
         self.chunks.push(first_stage_chunk.to_vec().clone());
+        //self.process_dictionary();
 
     }
     pub fn print_dict(&self) {
@@ -74,7 +75,7 @@ impl Analyser {
     }
 
     //Updating analyser occurrences counter
-    fn add_chunk(&mut self, chunk: Vec<u8>) {
+    fn add_chunk(&mut self, chunk: Vec<u8>)-> usize {
         let str_size = chunk.len();
         let mut chunk_dict_id = 0;
         let mut hasher = DefaultHasher::new();
@@ -84,7 +85,7 @@ impl Analyser {
         for dict_chunk in self.dict.iter() {
             if dict_chunk.hash == chunk_hash {
                 inc!(self.dict[chunk_dict_id].occurrence_num);
-                return;
+                return MIN_CHUNK_SIZE;
             }
             inc!(chunk_dict_id);
         }
@@ -94,6 +95,7 @@ impl Analyser {
             size: str_size,
             hash: chunk_hash
         });
+        1
     }
 
     //The main method which makes text dedup || DEBUG ONLY
@@ -114,11 +116,32 @@ impl Analyser {
         println!("{}", string_out.len());
         fs::write(file_out, string_out).expect("Unable to write the file");
     }
+    fn process_dictionary(&self) {
+        let mut sum_of_records = 0;
+        for cur_freq in 1..20{
+            sum_of_records = 0;
+            for record in self.dict.iter(){
+                if record.occurrence_num == cur_freq{
+                    sum_of_records += 1;
+                }
+            }
+            println!("FOR FREQUENCY {} NUMBER OF RECORDS IS {}",cur_freq,sum_of_records)
+        }
+        sum_of_records = 0;
+        for record in self.dict.iter(){
+            if record.occurrence_num >= 20{
+                sum_of_records += 1;
+            }
+        }
+        println!("FOR FREQUENCY {} NUMBER OF RECORDS IS {}", ">= 20", sum_of_records)
 
+    }
     //This method contains FBC chunker implementation
     pub fn fbc_dedup(&mut self) -> usize {
+        self.process_dictionary();
+        self.reduce_low_occur();
         for dict_index in 0..self.dict.len() {
-            if (dict_index % 1000 == 0){
+            if (dict_index % 100 == 0){
                 println!("Checked: {}", (dict_index as f32 / self.dict.len() as f32) * 100.0)
             }
             for chunk_index in 0..self.chunks.len() {

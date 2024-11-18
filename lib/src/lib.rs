@@ -58,8 +58,13 @@ where
 
 
                     self.analyser.make_dict(data_ptr);
-                    if(cdc_data > 150000){
+
+                    if(cdc_data > 2000000){
                         break
+                    }
+
+                    if (data_ptr.len() % 2 == 0){
+                        self.analyser.reduce_low_occur()
                     }
                     let y = data_ptr.to_vec();
                     let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
