@@ -4,7 +4,7 @@ extern crate fbc_scrubber;
 use chunkfs::chunkers::SuperChunker;
 use chunkfs::hashers::Sha256Hasher;
 use chunkfs::FileSystem;
-use fbc_scrubber::analyser::Analyser;
+use fbc_scrubber::fbc_chunker::ChunkerFBC;
 use fbc_scrubber::storage::FBCMap;
 use fbc_scrubber::FBCScrubber;
 use std::collections::HashMap;

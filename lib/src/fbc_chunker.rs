@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::string::String;
 use std::vec::Vec;
@@ -8,6 +9,8 @@ use chunkfs::Chunk;
 //Max size of frequent chunk that can be found by analyser
 const MAX_CHUNK_SIZE: usize = 64;
 //DEBUG OLNY || Parameter of FSChunker
+const AGING_CONST: u64 = 1024 * 1024;
+
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
@@ -26,13 +29,18 @@ struct DictRecord {
     chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
-    hash: u64
+    hash: u64,
+    age: u64
+}
+
+struct FrequencyAnalyser{
+    dict: HashMap<u64, DictRecord>,
 }
 
 //Struct that provide frequency analysis for chunks
 #[derive(Default)]
 pub struct Analyser {
-    dict: Vec<DictRecord>,
+    dict: HashMap<u64, DictRecord>,
     chunk_ids: Vec<usize>,
     chunks: Vec<Vec<u8>>,
 }
@@ -60,12 +68,24 @@ impl Analyser {
         self.chunk_ids.push(self.chunks.len());
         self.chunks.push(first_stage_chunk.to_vec().clone());
         //self.process_dictionary();
+        /*
+        for x in 0..self.dict.len(){
+            if self.dict[x].occurrence_num > 1 && self.dict[x].age > AGING_CONST * self.dict[x].occurrence_num as u64{
+                self.dict[x].occurrence_num = 1;
 
+            }
+            else{
+                self.dict[x].age += first_stage_chunk.len() as u64;
+            }
+        }
+
+         */
+        println!("{}", self.dict.len())
     }
     pub fn print_dict(&self) {
         for i in self.dict.iter() {
-            if(i.occurrence_num > 1) {
-                println!("chunk: {:?} occurence: {}", i.chunk, i.occurrence_num)
+            if(i.1.occurrence_num > 1) {
+                println!("chunk: {:?} occurence: {}", i.1.chunk, i.1.occurrence_num)
             }
         }
     }
@@ -80,20 +100,18 @@ impl Analyser {
         let mut chunk_dict_id = 0;
         let mut hasher = DefaultHasher::new();
         hasher.write(chunk.as_slice());
-        let chunk_hash = hasher.finish();
+        let mut chunk_hash = hasher.finish();
 
-        for dict_chunk in self.dict.iter() {
-            if dict_chunk.hash == chunk_hash {
-                inc!(self.dict[chunk_dict_id].occurrence_num);
-                return MIN_CHUNK_SIZE;
-            }
-            inc!(chunk_dict_id);
+        if (self.dict.contains_key(&chunk_hash)) {
+            self.dict.get_mut(&chunk_hash).unwrap().occurrence_num = self.dict[&chunk_hash].occurrence_num + 1;
         }
-        self.dict.push(DictRecord {
+
+        self.dict.insert(chunk_hash, DictRecord {
             chunk: chunk.to_vec(),
             occurrence_num: 1,
             size: str_size,
-            hash: chunk_hash
+            hash: chunk_hash,
+            age: 0
         });
         1
     }
@@ -121,7 +139,7 @@ impl Analyser {
         for cur_freq in 1..20{
             sum_of_records = 0;
             for record in self.dict.iter(){
-                if record.occurrence_num == cur_freq{
+                if record.1.occurrence_num == cur_freq{
                     sum_of_records += 1;
                 }
             }
@@ -129,7 +147,7 @@ impl Analyser {
         }
         sum_of_records = 0;
         for record in self.dict.iter(){
-            if record.occurrence_num >= 20{
+            if record.1.occurrence_num >= 20{
                 sum_of_records += 1;
             }
         }
@@ -140,18 +158,22 @@ impl Analyser {
     pub fn fbc_dedup(&mut self) -> usize {
         self.process_dictionary();
         self.reduce_low_occur();
-        for dict_index in 0..self.dict.len() {
+        let drec = self.dict.clone();
+        for dict_rec in drec {
+            /*
             if (dict_index % 100 == 0){
                 println!("Checked: {}", (dict_index as f32 / self.dict.len() as f32) * 100.0)
             }
+
+             */
             for chunk_index in 0..self.chunks.len() {
-                if self.dict[dict_index].chunk.len() < self.chunks[chunk_index].len() {
+                if dict_rec.1.chunk.len() < self.chunks[chunk_index].len() {
                     for chunk_char in
-                        0..self.chunks[chunk_index].len() - self.dict[dict_index].chunk.len()
+                        0..self.chunks[chunk_index].len() - dict_rec.1.chunk.len()
                     {
                         let mut is_chunk_correct = true;
-                        for char_index in 0..self.dict[dict_index].chunk.len() {
-                            if self.dict[dict_index].chunk[char_index]
+                        for char_index in 0..dict_rec.1.chunk.len() {
+                            if dict_rec.1.chunk[char_index]
                                 != self.chunks[chunk_index][chunk_char + char_index]
                             {
                                 is_chunk_correct = false;
@@ -164,7 +186,7 @@ impl Analyser {
                             let mut cut_out = self.chunks.len();
 
                             for chunk_index in 0..self.chunks.len() {
-                                if self.chunks[chunk_index] == self.dict[dict_index].chunk {
+                                if self.chunks[chunk_index] == dict_rec.1.chunk {
                                     is_found = true;
                                     cut_out = chunk_index;
                                     break;
@@ -172,20 +194,20 @@ impl Analyser {
                             }
                             if chunk_char == 0 {
                                 if !is_found {
-                                    self.chunks.push(self.dict[dict_index].chunk.clone());
+                                    self.chunks.push(dict_rec.1.chunk.clone());
                                 }
                                 self.chunks[chunk_index] =
-                                    self.chunks[chunk_index][self.dict[dict_index].chunk.len()
+                                    self.chunks[chunk_index][dict_rec.1.chunk.len()
                                         ..self.chunks[chunk_index].len()]
                                         .to_owned();
                                 self.replace_all_two(chunk_index, cut_out, chunk_index);
                             } else {
                                 if !is_found {
-                                    self.chunks.push(self.dict[dict_index].chunk.clone());
+                                    self.chunks.push(dict_rec.1.chunk.clone());
                                 }
                                 self.chunks.push(
                                     self.chunks[chunk_index]
-                                        [self.dict[dict_index].size + chunk_char..self.chunks[chunk_index].len()]
+                                        [dict_rec.1.size + chunk_char..self.chunks[chunk_index].len()]
                                         .to_owned(),
                                 );
                                 self.chunks[chunk_index] =
@@ -242,8 +264,8 @@ impl Analyser {
     pub fn reduce_low_occur(&mut self) {
         self.dict = self
             .dict
-            .drain(..)
-            .filter(|x| x.occurrence_num > 1)
+            .drain()
+            .filter(|x| x.1.occurrence_num > 1)
             .collect();
     }
     fn dict_count_size(&self) -> usize {
@@ -263,8 +285,8 @@ impl Analyser {
         //self.print_dict();
         self.dict = self
             .dict
-            .drain(..)
-            .filter(|x| x.occurrence_num > 1)
+            .drain()
+            .filter(|x| x.1.occurrence_num > 1)
             .collect();
         self.fbc_dedup();
         println!("{:?}", self.chunk_ids.len());
