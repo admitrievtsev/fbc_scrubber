@@ -55,26 +55,30 @@ where
             let mut chunk = data_container.extract();
             match chunk {
                 Data::Chunk(data_ptr) => {
+                    if(cdc_data% 4 == 0){
                     println!(
                         "Data Left: ({}/{}) Scrubbed: % {}",
                         cdc_data,
                         kdata,
                         (cdc_data as f32 / kdata as f32) * 100.0
                     );
-
+                    }
                     cdc_data += data_ptr.len() + 8;
 
                     self.analyser.make_dict(data_ptr);
                     //self.analyser.print_dict();
                     self.chunker.add_cdc_chunk(data_ptr);
                     /*
-                    if (cdc_data > 100000) {
-                        break;
+                    if cdc_data > 2000000{
+                        break
                     }
 
                      */
 
-                    if (data_ptr.len() % 4 == 0) {
+
+
+
+                    if (data_ptr.len() % 2 == 0) {
                         self.analyser.reduce_low_occur()
                     }
 

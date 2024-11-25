@@ -8,3 +8,9 @@ edition = "2021"
 fbc_scrubber = { path = "../lib"}
 chunkfs = { git = "https://github.com/Piletskii-Oleg/chunkfs.git", branch = "SBC-FBC-support",  features = ["hashers", "chunkers"] }
 rand = "0.8.5"
+
+[profile.release]
+debug = true
+
+[profile.dev]
+opt-level = 3

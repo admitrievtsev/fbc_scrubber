@@ -17,12 +17,20 @@ fn main() -> io::Result<()> {
         let mut analyser = Analyser::default();
     analyser.deduplicate("files/lowinput.txt", "lowout.txt");
      */
-/*
+
     let mut analyser = FrequencyAnalyser::default();
     let mut chunker = ChunkerFBC::default();
     let contents = fs::read("files/lowinput.txt").expect("Should have been able to read the file");
     analyser.make_dict(&contents);
-    chunker.add_cdc_chunk(&contents);
+    chunker.add_cdc_chunk(&contents[0..1000].to_vec());
+    chunker.add_cdc_chunk(&contents[1000..3000].to_vec());
+    chunker.add_cdc_chunk(&contents[3000..4000].to_vec());
+    chunker.add_cdc_chunk(&contents[4000..5000].to_vec());
+    chunker.add_cdc_chunk(&contents[5000..5500].to_vec());
+
+    chunker.add_cdc_chunk(&contents[5500..6000].to_vec());
+    chunker.add_cdc_chunk(&contents[6000..7000].to_vec());
+    chunker.add_cdc_chunk(&contents[7000..contents.len()].to_vec());
     chunker.fbc_dedup(analyser.get_dict());
     chunker.reduplicate("out.txt");
 
@@ -31,7 +39,6 @@ fn main() -> io::Result<()> {
     }
 
 
- */
 
     let mut fs = FileSystem::new_with_scrubber(
         HashMap::default(),

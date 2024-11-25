@@ -62,12 +62,11 @@ impl FrequencyAnalyser {
         }
 
          */
-        println!("{}", self.dict.len())
+        //println!("{}", self.dict.len())
     }
 
     fn add_chunk(&mut self, chunk: Vec<u8>) -> usize {
         let str_size = chunk.len();
-        let mut chunk_dict_id = 0;
         let mut hasher = DefaultHasher::new();
         hasher.write(chunk.as_slice());
         let mut chunk_hash = hasher.finish();
