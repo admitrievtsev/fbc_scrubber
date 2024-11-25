@@ -1,3 +1,5 @@
+#![feature(ascii_char)]
+
 pub mod fbc_chunker;
 pub mod frequency_analyser;
 pub mod storage;
@@ -55,13 +57,13 @@ where
             let mut chunk = data_container.extract();
             match chunk {
                 Data::Chunk(data_ptr) => {
-                    if(cdc_data% 4 == 0){
-                    println!(
-                        "Data Left: ({}/{}) Scrubbed: % {}",
-                        cdc_data,
-                        kdata,
-                        (cdc_data as f32 / kdata as f32) * 100.0
-                    );
+                    if (cdc_data % 4 == 0) {
+                        println!(
+                            "Data Left: ({}/{}) Scrubbed: % {}",
+                            cdc_data,
+                            kdata,
+                            (cdc_data as f32 / kdata as f32) * 100.0
+                        );
                     }
                     cdc_data += data_ptr.len() + 8;
 
@@ -75,10 +77,7 @@ where
 
                      */
 
-
-
-
-                    if (data_ptr.len() % 2 == 0) {
+                    if (data_ptr.len() % 20 == 0) {
                         self.analyser.reduce_low_occur()
                     }
 

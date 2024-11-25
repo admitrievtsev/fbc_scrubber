@@ -12,24 +12,22 @@ use crate::frequency_analyser::FrequencyAnalyser;
 use crate::hash_chunk;
 
 //Max size of frequent chunk that can be found by analyser
-const MAX_CHUNK_SIZE: usize = 64;
+
 //DEBUG OLNY || Parameter of FSChunker
 const AGING_CONST: u64 = 1024 * 1024;
-
 type FBCHash = u64;
 
 const FIXED_CHUNKER_SIZE: usize = 128;
 
 //Min size of frequent chunk that can be found by analyser
+pub const MAX_CHUNK_SIZE: usize = 64;
 const MIN_CHUNK_SIZE: usize = 63;
-
 //Macros that I use to increase value by 1
 macro_rules! inc {
     ($x:expr) => {
         $x += 1
     };
 }
-
 
 //Struct that provide frequency analysis for chunks
 #[derive(Default)]
@@ -39,15 +37,13 @@ pub struct ChunkerFBC {
 }
 
 impl ChunkerFBC {
-
-    fn insert_chunk(&mut self, chunk: Vec<u8>) -> FBCHash{
+    fn insert_chunk(&mut self, chunk: Vec<u8>) -> FBCHash {
         self.chunks.insert(hash_chunk(&chunk), chunk.clone());
         hash_chunk(&chunk)
     }
     pub fn add_cdc_chunk(&mut self, first_stage_chunk: &Vec<u8>) {
         let res = self.insert_chunk(first_stage_chunk.clone());
         self.chunk_ids.push(res);
-
     }
     //This method is to print chunking results out
     fn tostr(word: &Vec<u8>) -> String {
@@ -81,10 +77,11 @@ impl ChunkerFBC {
         //self.process_dictionary();
         //self.reduce_low_occur();
         let mut k = 0;
-        let mut chunk_deque : VecDeque<FBCHash> = VecDeque::new();
-        for i in self.chunks.iter() {chunk_deque.push_front(*i.0)}
+        let mut chunk_deque: VecDeque<FBCHash> = VecDeque::new();
+        for i in self.chunks.iter() {
+            chunk_deque.push_front(*i.0)
+        }
 
-        let dict = dict.clone();
         //println!("{:?}", self.chunk_ids);
 
         while !chunk_deque.is_empty() {
@@ -92,13 +89,15 @@ impl ChunkerFBC {
             k += 1;
             let chunk_index = chunk_deque.pop_back().unwrap();
             if (k % 100 == 0) {
-                println!("Checked: {}", (k as f32 / self.chunks.len() as f32) * 100.0)
+                println!("Checked: {}", (chunk_deque.len()))
             }
-            let mut chunk_char  = 0;
-            if(!self.chunks.contains_key(&chunk_index)){
-                continue
+            let mut chunk_char = 0;
+            if (!self.chunks.contains_key(&chunk_index)) {
+                continue;
             }
-            while !(chunk_char as i128 >= self.chunks[&chunk_index].len() as i128 - MAX_CHUNK_SIZE as i128) {
+            while !(chunk_char as i128
+                >= self.chunks[&chunk_index].len() as i128 - MAX_CHUNK_SIZE as i128)
+            {
                 //println!("{}", self.dict_count_size());
                 //println!("{} {} {}", chunk_index, self.chunks.len(), chunk_char);
                 let mut tmp_vec: Vec<u8> = Vec::with_capacity(MAX_CHUNK_SIZE);
@@ -110,9 +109,11 @@ impl ChunkerFBC {
                 let mut k_state = false;
                 let chunk_hash = hash_chunk(&tmp_vec);
                 let mut split_two = false;
-                if dict.contains_key(&chunk_hash)  {
+                if dict.contains_key(&chunk_hash) {
                     let dict_rec = (chunk_hash, dict.get(&chunk_hash).unwrap());
-                    if (chunk_char as i128 > self.chunks[&chunk_index].len() as i128 - MAX_CHUNK_SIZE as i128){
+                    if (chunk_char as i128
+                        > self.chunks[&chunk_index].len() as i128 - MAX_CHUNK_SIZE as i128)
+                    {
                         k_state = true;
                         break;
                     }
@@ -135,17 +136,18 @@ impl ChunkerFBC {
                             let mut cut_out = 0;
                             if self.chunks.contains_key(&chunk_hash) {
                                 cut_out = chunk_hash;
-                            }
-                            else {
+                            } else {
                                 cut_out = self.insert_chunk(dict_rec.1.get_chunk().clone());
                             }
                             if chunk_char == 0 {
-                                let new_hash = self.insert_chunk(self.chunks[&chunk_index]
-                                    [dict_rec.1.get_chunk().len()..self.chunks[&chunk_index].len()]
-                                    .to_owned());
+                                let new_hash = self.insert_chunk(
+                                    self.chunks[&chunk_index][dict_rec.1.get_chunk().len()
+                                        ..self.chunks[&chunk_index].len()]
+                                        .to_owned(),
+                                );
                                 chunk_deque.push_front(new_hash);
                                 //self.chunks.remove(&chunk_index);
-                                if(chunk_index != cut_out && chunk_index != new_hash) {
+                                if (chunk_index != cut_out && chunk_index != new_hash) {
                                     self.chunks.remove(&chunk_index);
                                 }
                                 self.replace_all_two(chunk_index, cut_out, new_hash);
@@ -156,9 +158,15 @@ impl ChunkerFBC {
                                 let new_hash_2nd = self.insert_chunk(
                                     (self.chunks[&chunk_index][dict_rec.1.get_size() + chunk_char
                                         ..self.chunks[&chunk_index].len()]
-                                        .to_owned()));
-                                let new_hash_1st = self.insert_chunk(self.chunks[&chunk_index][0..chunk_char].to_owned());
-                                if(chunk_index != cut_out && chunk_index != new_hash_2nd && chunk_index != new_hash_1st) {
+                                        .to_owned()),
+                                );
+                                let new_hash_1st = self.insert_chunk(
+                                    self.chunks[&chunk_index][0..chunk_char].to_owned(),
+                                );
+                                if (chunk_index != cut_out
+                                    && chunk_index != new_hash_2nd
+                                    && chunk_index != new_hash_1st)
+                                {
                                     self.chunks.remove(&chunk_index);
                                 }
                                 chunk_deque.push_front(new_hash_2nd);
@@ -169,27 +177,31 @@ impl ChunkerFBC {
                                     new_hash_2nd,
                                 );
                             }
-                            break
+                            break;
                         }
+                    } else {
+                        break;
                     }
-                    else {break}
                 }
-                if k_state{
+                if k_state {
                     //println!("KSTATE");
-                    break
+                    break;
                 }
-                if !split_two
-                {chunk_char += 1;}
+                if !split_two {
+                    chunk_char += 1;
+                }
             }
         }
-        println!("{}", self.dict_count_size() + self.chunk_ids.len() * 8);
-        return self.dict_count_size() + self.chunk_ids.len() * 8;
+        println!(
+            "{}",
+            self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8
+        );
+        return self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8;
     }
     fn hash_chunk(tmp_vec: &Vec<u8>) -> u64 {
         let mut hasher = DefaultHasher::new();
         hasher.write(tmp_vec.as_slice());
         hasher.finish()
-
     }
     // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: u64, first: u64, second: u64) {

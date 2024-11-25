@@ -34,11 +34,11 @@ fn main() -> io::Result<()> {
     chunker.fbc_dedup(analyser.get_dict());
     chunker.reduplicate("out.txt");
 
-    if (fs::read("files/lowinput.txt").expect("Should have been able to read the file") == fs::read("out.txt").expect("Should have been able to read the file")){
+    if (fs::read("files/lowinput.txt").expect("Should have been able to read the file")
+        == fs::read("out.txt").expect("Should have been able to read the file"))
+    {
         println!("MATCH")
     }
-
-
 
     let mut fs = FileSystem::new_with_scrubber(
         HashMap::default(),
@@ -60,7 +60,6 @@ fn main() -> io::Result<()> {
     let mut handle = fs.open_file("file", SuperChunker::new())?;
     let read = fs.read_file_complete(&mut handle)?;
     assert_eq!(read.len(), data.len());
-
 
     Ok(())
 }
