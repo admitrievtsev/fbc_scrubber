@@ -5,6 +5,8 @@ use chunkfs::chunkers::SuperChunker;
 use chunkfs::hashers::Sha256Hasher;
 use chunkfs::FileSystem;
 use fbc_scrubber::fbc_chunker::ChunkerFBC;
+
+use fbc_scrubber::frequency_analyser::FrequencyAnalyser;
 use fbc_scrubber::storage::FBCMap;
 use fbc_scrubber::FBCScrubber;
 use std::collections::HashMap;
@@ -15,6 +17,21 @@ fn main() -> io::Result<()> {
         let mut analyser = Analyser::default();
     analyser.deduplicate("files/lowinput.txt", "lowout.txt");
      */
+/*
+    let mut analyser = FrequencyAnalyser::default();
+    let mut chunker = ChunkerFBC::default();
+    let contents = fs::read("files/lowinput.txt").expect("Should have been able to read the file");
+    analyser.make_dict(&contents);
+    chunker.add_cdc_chunk(&contents);
+    chunker.fbc_dedup(analyser.get_dict());
+    chunker.reduplicate("out.txt");
+
+    if (fs::read("files/lowinput.txt").expect("Should have been able to read the file") == fs::read("out.txt").expect("Should have been able to read the file")){
+        println!("MATCH")
+    }
+
+
+ */
 
     let mut fs = FileSystem::new_with_scrubber(
         HashMap::default(),
@@ -27,7 +44,6 @@ fn main() -> io::Result<()> {
 
     //fs::remove_file("lowout.txt").expect("File lowout.txt not exists in current directory");
 
-
     fs.write_to_file(&mut handle, &data)?;
     fs.close_file(handle)?;
 
@@ -37,6 +53,7 @@ fn main() -> io::Result<()> {
     let mut handle = fs.open_file("file", SuperChunker::new())?;
     let read = fs.read_file_complete(&mut handle)?;
     assert_eq!(read.len(), data.len());
+
 
     Ok(())
 }

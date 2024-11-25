@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::analyser::Analyser;
+    use crate::fbc_chunker::Analyser;
     use std::fs;
 
     #[test]

@@ -1,8 +1,10 @@
-pub mod analyser;
+pub mod fbc_chunker;
+pub mod frequency_analyser;
 pub mod storage;
 mod test;
 
-use crate::analyser::Analyser;
+use crate::fbc_chunker::ChunkerFBC;
+use crate::frequency_analyser::FrequencyAnalyser;
 use crate::storage::FBCKey;
 use chunkfs::{ChunkHash, Data, DataContainer, Database, Scrub, ScrubMeasurements};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -10,12 +12,14 @@ use std::time::Instant;
 
 // ChunkFS scrubber implementation
 pub struct FBCScrubber {
-    pub analyser: Analyser,
+    pub analyser: FrequencyAnalyser,
+    pub chunker: ChunkerFBC,
 }
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
         FBCScrubber {
-            analyser: Analyser::default(),
+            analyser: FrequencyAnalyser::default(),
+            chunker: ChunkerFBC::default(),
         }
     }
 }
@@ -28,7 +32,6 @@ where
         &mut self,
         database: &mut B,
         target_map: &mut Box<dyn Database<FBCKey, Vec<u8>>>,
-
     ) -> Result<ScrubMeasurements, std::io::Error>
     where
         Hash: 'a,
@@ -52,20 +55,29 @@ where
             let mut chunk = data_container.extract();
             match chunk {
                 Data::Chunk(data_ptr) => {
-                    println!("Data Left: ({}/{}) Scrubbed: % {}", cdc_data, kdata, (cdc_data as f32 / kdata as f32) * 100.0);
+                    println!(
+                        "Data Left: ({}/{}) Scrubbed: % {}",
+                        cdc_data,
+                        kdata,
+                        (cdc_data as f32 / kdata as f32) * 100.0
+                    );
 
                     cdc_data += data_ptr.len() + 8;
 
-
                     self.analyser.make_dict(data_ptr);
-
-                    if(cdc_data > 2000000){
-                        break
+                    //self.analyser.print_dict();
+                    self.chunker.add_cdc_chunk(data_ptr);
+                    /*
+                    if (cdc_data > 100000) {
+                        break;
                     }
 
-                    if (data_ptr.len() % 2 == 0){
+                     */
+
+                    if (data_ptr.len() % 4 == 0) {
                         self.analyser.reduce_low_occur()
                     }
+
                     let y = data_ptr.to_vec();
                     let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
                     target_map
@@ -75,9 +87,11 @@ where
                 _ => {}
             }
         }
-        self.analyser.print_dict();
+        self.analyser.process_dictionary();
+
         processed_data = cdc_data;
-        data_left = self.analyser.fbc_dedup();
+        self.analyser.reduce_low_occur();
+        data_left = self.chunker.fbc_dedup(self.analyser.get_dict());
         let running_time = start_time.elapsed();
         Ok(ScrubMeasurements {
             processed_data,

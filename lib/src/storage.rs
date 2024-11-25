@@ -13,7 +13,6 @@ impl FBCKey {
     pub fn new(key: u64, state: bool) -> FBCKey {
         FBCKey { key, state }
     }
-
 }
 
 pub struct FBCMap {
