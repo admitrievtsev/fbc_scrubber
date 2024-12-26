@@ -1,7 +1,7 @@
 extern crate chunkfs;
 extern crate fbc_scrubber;
 
-use chunkfs::chunkers::SuperChunker;
+use chunkfs::chunkers::{RabinChunker, SuperChunker};
 use chunkfs::hashers::Sha256Hasher;
 use chunkfs::FileSystem;
 use fbc_scrubber::fbc_chunker::ChunkerFBC;
@@ -18,7 +18,7 @@ fn main() -> io::Result<()> {
     analyser.deduplicate("files/lowinput.txt", "lowout.txt");
      */
 
-    let mut analyser = FrequencyAnalyser::default();
+    let mut analyser = FrequencyAnalyser::new();
     let mut chunker = ChunkerFBC::default();
     let contents = fs::read("files/lowinput.txt").expect("Should have been able to read the file");
     analyser.make_dict(&contents);
@@ -47,7 +47,8 @@ fn main() -> io::Result<()> {
         Sha256Hasher::default(),
     );
     let mut handle = fs.create_file("file".to_string(), SuperChunker::new(), true)?;
-    let data = fs::read("files/emails_test.csv").expect("Should have been able to read the file");
+    let data = fs::read("files/linux.tar").expect("Should have been able to read the file");
+
 
     //fs::remove_file("lowout.txt").expect("File lowout.txt not exists in current directory");
 
@@ -57,7 +58,7 @@ fn main() -> io::Result<()> {
     let res = fs.scrub()?;
     println!("{res:?}");
 
-    let mut handle = fs.open_file("file", SuperChunker::new())?;
+    let mut handle = fs.open_file("file", RabinChunker::new())?;
     let read = fs.read_file_complete(&mut handle)?;
     assert_eq!(read.len(), data.len());
 
