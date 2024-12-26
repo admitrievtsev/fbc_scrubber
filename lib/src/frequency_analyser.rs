@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use qfilter::Filter;
 
 //Struct that provide occurrences counting during analysis of data
-pub const MAX_CHUNK_SIZE: usize = 64;
-const MIN_CHUNK_SIZE: usize = 63;
-use std::hash::{DefaultHasher, Hash, Hasher};
+pub const MAX_CHUNK_SIZE: usize = 128;
+const MIN_CHUNK_SIZE: usize = 127;
+use std::hash::{DefaultHasher, Hasher};
 
 #[derive(Default)]
 pub struct DictRecord {
@@ -21,12 +22,13 @@ impl DictRecord {
     }
 }
 
-#[derive(Default)]
 pub struct FrequencyAnalyser {
     dict: HashMap<u64, DictRecord>,
+    filter: qfilter::Filter
 }
 
 impl FrequencyAnalyser {
+    pub fn new() -> Self{FrequencyAnalyser{ dict: HashMap::default(), filter: qfilter::Filter::new(10000000, 0.01).unwrap() }}
     pub fn get_dict(&self) -> &HashMap<u64, DictRecord> {
         &self.dict
     }
@@ -69,10 +71,13 @@ impl FrequencyAnalyser {
         let str_size = chunk.len();
         let mut hasher = DefaultHasher::new();
         hasher.write(chunk.as_slice());
-        let mut chunk_hash = hasher.finish();
+        let chunk_hash = hasher.finish();
 
-        if (self.dict.contains_key(&chunk_hash)) {
-            self.dict.get_mut(&chunk_hash).unwrap().occurrence_num += 1;
+        if self.filter.contains(chunk.clone()) {
+            match self.dict.get_mut(&chunk_hash) {
+                Some(_) => {self.dict.get_mut(&chunk_hash).unwrap().occurrence_num += 1;}
+                None => {}
+            }
             /*
             if(self.dict.get_mut(&chunk_hash).unwrap().occurrence_num > 2){
             println!("{}",self.dict.get_mut(&chunk_hash).unwrap().occurrence_num);}
@@ -89,6 +94,7 @@ impl FrequencyAnalyser {
                 hash: chunk_hash,
             },
         );
+        self.filter.insert(chunk).expect("Error with Bloom filter");
         1
     }
 
@@ -118,22 +124,27 @@ impl FrequencyAnalyser {
             }
         }
         println!(
-            "FOR FREQUENCY {} NUMBER OF RECORDS IS {}",
-            ">= 20", sum_of_records
+            "FOR FREQUENCY >= 20 NUMBER OF RECORDS IS {}", sum_of_records
         )
     }
     pub fn print_dict(&self) {
         for i in self.dict.iter() {
-            if (i.1.occurrence_num > 1) {
+            if i.1.occurrence_num > 1 {
                 println!("chunk: {:?} occurence: {}", i.1.chunk, i.1.occurrence_num)
             }
         }
     }
     pub fn reduce_low_occur(&mut self) {
+        for i in self.dict.iter_mut() {
+            if (i.1.occurrence_num <= 1){
+                self.filter.remove(i.1.chunk.clone());
+            }
+        }
         self.dict = self
             .dict
             .drain()
             .filter(|x| x.1.occurrence_num > 1)
             .collect();
+
     }
 }

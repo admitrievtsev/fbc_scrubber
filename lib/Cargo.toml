@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 chunkfs = { git = "https://github.com/Piletskii-Oleg/chunkfs.git", branch = "SBC-FBC-support" }
 sha2 = "0.10.8"
+qfilter = "0.2.1"
 
 [profile.release]
 debug = true

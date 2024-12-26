@@ -1,5 +1,4 @@
 use chunkfs::Database;
-use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
@@ -17,6 +16,12 @@ impl FBCKey {
 
 pub struct FBCMap {
     fbc_hashmap: HashMap<FBCKey, Vec<u8>>,
+}
+
+impl Default for FBCMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FBCMap {

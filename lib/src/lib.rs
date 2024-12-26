@@ -17,10 +17,16 @@ pub struct FBCScrubber {
     pub analyser: FrequencyAnalyser,
     pub chunker: ChunkerFBC,
 }
+impl Default for FBCScrubber {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
         FBCScrubber {
-            analyser: FrequencyAnalyser::default(),
+            analyser: FrequencyAnalyser::new(),
             chunker: ChunkerFBC::default(),
         }
     }
@@ -44,50 +50,41 @@ where
         let start_time = Instant::now();
         let mut kdata = 0;
         for (_, data_container) in database.into_iter() {
-            let mut chunk = data_container.extract();
-            match chunk {
-                Data::Chunk(data_ptr) => {
-                    kdata += data_ptr.len() + 8;
-                }
-                _ => {}
+            let chunk = data_container.extract();
+            if let Data::Chunk(data_ptr) = chunk {
+                kdata += data_ptr.len() + 8;
             }
         }
 
         for (_, data_container) in database.into_iter() {
-            let mut chunk = data_container.extract();
-            match chunk {
-                Data::Chunk(data_ptr) => {
-                    if (cdc_data % 4 == 0) {
-                        println!(
-                            "Data Left: ({}/{}) Scrubbed: % {}",
-                            cdc_data,
-                            kdata,
-                            (cdc_data as f32 / kdata as f32) * 100.0
-                        );
-                    }
-                    cdc_data += data_ptr.len() + 8;
-
-                    self.analyser.make_dict(data_ptr);
-                    //self.analyser.print_dict();
-                    self.chunker.add_cdc_chunk(data_ptr);
-                    /*
-                    if cdc_data > 2000000{
-                        break
-                    }
-
-                     */
-
-                    if (data_ptr.len() % 20 == 0) {
-                        self.analyser.reduce_low_occur()
-                    }
-
-                    let y = data_ptr.to_vec();
-                    let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
-                    target_map
-                        .insert(tmp_key, data_ptr.to_vec().clone())
-                        .unwrap()
+            let chunk = data_container.extract();
+            if let Data::Chunk(data_ptr) = chunk {
+                if cdc_data % 4 == 0 {
+                    println!(
+                        "Data Left: ({}/{}) Scrubbed: % {}",
+                        cdc_data,
+                        kdata,
+                        (cdc_data as f32 / kdata as f32) * 100.0
+                    );
                 }
-                _ => {}
+                cdc_data += data_ptr.len() + 8;
+
+                self.analyser.make_dict(data_ptr);
+                self.chunker.add_cdc_chunk(data_ptr);
+
+                if cdc_data > 30000000{
+                    break
+                }
+
+                if data_ptr.len() % 20 == 0 {
+                    self.analyser.reduce_low_occur()
+                }
+
+                let y = data_ptr.to_vec();
+                let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
+                target_map
+                    .insert(tmp_key, data_ptr.to_vec().clone())
+                    .unwrap()
             }
         }
         self.analyser.process_dictionary();
@@ -108,5 +105,5 @@ where
 fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
     let mut hasher = DefaultHasher::new();
     Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
-    return hasher.finish();
+    hasher.finish()
 }
