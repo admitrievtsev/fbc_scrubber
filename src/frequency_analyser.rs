@@ -122,10 +122,7 @@ impl FrequencyAnalyser {
         sum_of_records = 0;
         for record in self.dict.iter() {
             if record.1.occurrence_num >= 20 {
-                println!(
-                    "{}",
-                    record.1.occurrence_num
-                );
+                println!("{}", record.1.occurrence_num);
                 sum_of_records += 1;
             }
         }
