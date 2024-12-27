@@ -1,10 +1,9 @@
 use chunkfs::Database;
-use std::collections::hash_map::Keys;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
 
-#[derive(Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq, Clone)]
 pub struct FBCKey {
     key: u64,
     state: bool,
@@ -17,6 +16,12 @@ impl FBCKey {
 
 pub struct FBCMap {
     fbc_hashmap: HashMap<FBCKey, Vec<u8>>,
+}
+
+impl Default for FBCMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FBCMap {
@@ -36,11 +41,6 @@ impl Database<FBCKey, Vec<u8>> for FBCMap {
         let chunk = self.fbc_hashmap.get(hash).cloned().unwrap();
         Ok(chunk)
     }
-
-    fn remove(&mut self, hash: &FBCKey) {
-        self.fbc_hashmap.remove(hash);
-    }
-
     fn contains(&self, key: &FBCKey) -> bool {
         self.fbc_hashmap.contains_key(key)
     }

@@ -1,35 +1,32 @@
 #[cfg(test)]
 mod tests {
-    use crate::analyser::Analyser;
+    use crate::fbc_chunker::ChunkerFBC;
+    use crate::frequency_analyser::FrequencyAnalyser;
     use std::fs;
 
     #[test]
-    //BIG-SIZE TEXT
-    // (~16000 symbols, 26.3% dedupled)
     fn fbc_topic_test() {
-        let mut analyser = Analyser::default();
-        let file_in = "test_files_input/fbc_topic_input.txt";
-        let file_out = "fbc_topic_output.txt";
-        analyser.deduplicate(file_in, file_out);
-        let expected = fs::read_to_string(file_in).expect("Should have been able to read the file");
-        let actual = fs::read_to_string(file_out).expect("Should have been able to read the file");
-        assert_eq!(expected, actual);
-        fs::remove_file("fbc_topic_output.txt")
-            .expect("File lowout.txt not exists in current directory");
-    }
+        let mut analyser = FrequencyAnalyser::new();
+        let mut chunker = ChunkerFBC::default();
+        let contents = fs::read("test_files_input/lowinput.txt")
+            .expect("Should have been able to read the file");
+        analyser.make_dict(&contents);
+        chunker.add_cdc_chunk(&contents[0..1000].to_vec());
+        chunker.add_cdc_chunk(&contents[1000..3000].to_vec());
+        chunker.add_cdc_chunk(&contents[3000..4000].to_vec());
+        chunker.add_cdc_chunk(&contents[4000..5000].to_vec());
+        chunker.add_cdc_chunk(&contents[5000..5500].to_vec());
+        chunker.add_cdc_chunk(&contents[5500..6000].to_vec());
+        chunker.add_cdc_chunk(&contents[6000..7000].to_vec());
+        chunker.add_cdc_chunk(&contents[7000..contents.len()].to_vec());
+        chunker.fbc_dedup(analyser.get_dict());
+        chunker.reduplicate("out.txt");
+        assert_eq!(
+            fs::read("test_files_input/lowinput.txt")
+                .expect("Should have been able to read lowinput"),
+            fs::read("out.txt").expect("Should have been able to read out file")
+        );
 
-    #[test]
-    //SMALL-SIZE TEXT
-    // (~8000 symbols, 16.9% dedupled)
-    fn fbc_orient_express() {
-        let mut analyser = Analyser::default();
-        let file_in = "test_files_input/orient_express_input.txt";
-        let file_out = "orient_express_output.txt";
-        analyser.deduplicate(file_in, file_out);
-        let expected = fs::read_to_string(file_in).expect("Should have been able to read the file");
-        let actual = fs::read_to_string(file_out).expect("Should have been able to read the file");
-        assert_eq!(expected, actual);
-        fs::remove_file("orient_express_output.txt")
-            .expect("File lowout.txt not exists in current directory");
+        fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
     }
 }
