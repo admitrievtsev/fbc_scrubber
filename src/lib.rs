@@ -1,5 +1,3 @@
-#![feature(ascii_char)]
-
 pub mod fbc_chunker;
 pub mod frequency_analyser;
 pub mod storage;
