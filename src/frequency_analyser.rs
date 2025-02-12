@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub const MAX_CHUNK_SIZE: usize = 128;
 const MIN_CHUNK_SIZE: usize = 127;
 use std::hash::{DefaultHasher, Hasher};
+use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
 pub struct DictRecord {
@@ -24,14 +25,12 @@ impl DictRecord {
 
 pub struct FrequencyAnalyser {
     dict: HashMap<u64, DictRecord>,
-    filter: qfilter::Filter,
 }
 
 impl FrequencyAnalyser {
     pub fn new() -> Self {
         FrequencyAnalyser {
-            dict: HashMap::default(),
-            filter: qfilter::Filter::new(10000000, 0.01).unwrap(),
+            dict: HashMap::default()
         }
     }
     pub fn get_dict(&self) -> &HashMap<u64, DictRecord> {
@@ -78,7 +77,7 @@ impl FrequencyAnalyser {
         hasher.write(chunk.as_slice());
         let chunk_hash = hasher.finish();
 
-        if self.filter.contains(chunk.clone()) {
+        if self.dict.contains_key(&chunk_hash) {
             match self.dict.get_mut(&chunk_hash) {
                 Some(_) => {
                     self.dict.get_mut(&chunk_hash).unwrap().occurrence_num += 1;
@@ -91,7 +90,6 @@ impl FrequencyAnalyser {
              */
             return MIN_CHUNK_SIZE;
         }
-
         self.dict.insert(
             chunk_hash,
             DictRecord {
@@ -100,9 +98,7 @@ impl FrequencyAnalyser {
                 size: str_size,
                 hash: chunk_hash,
             },
-        );
-        self.filter.insert(chunk).expect("Error with Bloom filter");
-        1
+        );1
     }
 
     pub fn process_dictionary(&self) {
@@ -139,11 +135,6 @@ impl FrequencyAnalyser {
         }
     }
     pub fn reduce_low_occur(&mut self) {
-        for i in self.dict.iter_mut() {
-            if (i.1.occurrence_num <= 1) {
-                self.filter.remove(i.1.chunk.clone());
-            }
-        }
         self.dict = self
             .dict
             .drain()

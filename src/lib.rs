@@ -1,8 +1,8 @@
 pub mod fbc_chunker;
 pub mod frequency_analyser;
 pub mod storage;
-mod test;
 
+use std::thread;
 use crate::fbc_chunker::ChunkerFBC;
 use crate::frequency_analyser::FrequencyAnalyser;
 use crate::storage::{FBCKey, FBCMap};
@@ -10,6 +10,8 @@ use chunkfs::{
     ChunkHash, Data, DataContainer, Database, IterableDatabase, Scrub, ScrubMeasurements,
 };
 use std::collections::HashMap;
+use std::fs;
+
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;
 
@@ -69,13 +71,8 @@ where
                     );
                 }
                 cdc_data += data_ptr.len() + 8;
-
                 self.analyser.make_dict(data_ptr);
                 self.chunker.add_cdc_chunk(data_ptr);
-
-                if cdc_data > 30000000 {
-                    break;
-                }
 
                 if data_ptr.len() % 20 == 0 {
                     self.analyser.reduce_low_occur()
@@ -108,3 +105,4 @@ fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
     Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
     hasher.finish()
 }
+

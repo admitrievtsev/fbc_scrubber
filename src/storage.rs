@@ -24,13 +24,6 @@ impl Default for FBCMap {
     }
 }
 
-impl FBCMap {
-    pub fn new() -> FBCMap {
-        FBCMap {
-            fbc_hashmap: HashMap::default(),
-        }
-    }
-}
 impl Database<FBCKey, Vec<u8>> for FBCMap {
     fn insert(&mut self, fbc_hash: FBCKey, chunk: Vec<u8>) -> io::Result<()> {
         self.fbc_hashmap.insert(fbc_hash, chunk);
@@ -43,5 +36,13 @@ impl Database<FBCKey, Vec<u8>> for FBCMap {
     }
     fn contains(&self, key: &FBCKey) -> bool {
         self.fbc_hashmap.contains_key(key)
+    }
+}
+
+impl FBCMap {
+    pub fn new() -> FBCMap {
+        FBCMap {
+            fbc_hashmap: HashMap::default(),
+        }
     }
 }
