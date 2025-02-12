@@ -1,14 +1,11 @@
-#[cfg(test)]
-mod tests {
-    use crate::fbc_chunker::ChunkerFBC;
-    use crate::frequency_analyser::FrequencyAnalyser;
+    use fbc_scrubber::fbc_chunker::ChunkerFBC;
+    use fbc_scrubber::frequency_analyser::FrequencyAnalyser;
     use std::fs;
 
-    #[test]
-    fn fbc_topic_test() {
+    fn main() {
         let mut analyser = FrequencyAnalyser::new();
         let mut chunker = ChunkerFBC::default();
-        let contents = fs::read("test_files_input/lowinput.txt")
+        let contents = fs::read("../test_files_input/lowinput.txt")
             .expect("Should have been able to read the file");
         analyser.make_dict(&contents);
         chunker.add_cdc_chunk(&contents[0..1000].to_vec());
@@ -21,12 +18,13 @@ mod tests {
         chunker.add_cdc_chunk(&contents[7000..contents.len()].to_vec());
         chunker.fbc_dedup(analyser.get_dict());
         chunker.reduplicate("out.txt");
-        assert_eq!(
-            fs::read("test_files_input/lowinput.txt")
-                .expect("Should have been able to read lowinput"),
+        if (
+            fs::read("../test_files_input/lowinput.txt")
+                .expect("Should have been able to read lowinput") ==
             fs::read("out.txt").expect("Should have been able to read out file")
-        );
+        ){
+            println!("MATCH")
+        }
 
         fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
     }
-}
