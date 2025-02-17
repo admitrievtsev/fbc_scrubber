@@ -2,22 +2,28 @@ pub mod fbc_chunker;
 pub mod frequency_analyser;
 pub mod storage;
 
+use std::cell::RefCell;
 use std::thread;
+
 use crate::fbc_chunker::ChunkerFBC;
-use crate::frequency_analyser::FrequencyAnalyser;
+use crate::frequency_analyser::{DictRecord, FrequencyAnalyser};
+use frequency_analyser::append_dict;
 use crate::storage::{FBCKey, FBCMap};
 use chunkfs::{
     ChunkHash, Data, DataContainer, Database, IterableDatabase, Scrub, ScrubMeasurements,
 };
 use std::collections::HashMap;
 use std::fs;
+use std::sync::{Arc, Mutex};
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;
-
 // ChunkFS scrubber implementation
+
+const THREADS_COUNT: usize = 24;
+
 pub struct FBCScrubber {
-    pub analyser: FrequencyAnalyser,
+    pub analyser: Mutex<FrequencyAnalyser>,
     pub chunker: ChunkerFBC,
 }
 impl Default for FBCScrubber {
@@ -29,15 +35,15 @@ impl Default for FBCScrubber {
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
         FBCScrubber {
-            analyser: FrequencyAnalyser::new(),
+            analyser: Mutex::new(FrequencyAnalyser::new()),
             chunker: ChunkerFBC::default(),
         }
     }
 }
-impl<Hash: ChunkHash, B> Scrub<Hash, B, FBCKey, FBCMap> for FBCScrubber
+impl<Hash: ChunkHash + 'static, B> Scrub<Hash, B, FBCKey, FBCMap> for FBCScrubber
 where
     B: IterableDatabase<Hash, DataContainer<FBCKey>>,
-    for<'a> &'a mut B: IntoIterator<Item = (&'a Hash, &'a mut DataContainer<FBCKey>)>,
+    for<'a> &'a mut B: IntoIterator<Item=(&'a Hash, &'a mut DataContainer<FBCKey>)>,
 {
     fn scrub<'a>(
         &mut self,
@@ -52,45 +58,83 @@ where
         let mut cdc_data = 0;
         let start_time = Instant::now();
         let mut kdata = 0;
+        let mut pointers_vec: Vec<[Option<&Vec<u8>>; THREADS_COUNT]> = vec![[None; THREADS_COUNT]; 1];
         for (_, data_container) in database.into_iter() {
             let chunk = data_container.extract();
             if let Data::Chunk(data_ptr) = chunk {
                 kdata += data_ptr.len() + 8;
+                match pointers_vec[pointers_vec.len() - 1][THREADS_COUNT - 1] {
+                    Some(_) => {
+                        let mut tmp_thread_array = [None; THREADS_COUNT];
+                        tmp_thread_array[0] = Some(data_ptr);
+                        pointers_vec.push(tmp_thread_array);
+                    }
+                    None => for thread_num in 0..THREADS_COUNT {
+                        if pointers_vec[pointers_vec.len() - 1][thread_num].is_none() {
+                            let ln = pointers_vec.len();
+                            pointers_vec[ln - 1][thread_num] = Some(data_ptr);
+                        }
+                    },
+                }
             }
         }
-
-        for (_, data_container) in database.into_iter() {
-            let chunk = data_container.extract();
-            if let Data::Chunk(data_ptr) = chunk {
-                if cdc_data % 4 == 0 {
-                    println!(
-                        "Data Left: ({}/{}) Scrubbed: % {}",
-                        cdc_data,
-                        kdata,
-                        (cdc_data as f32 / kdata as f32) * 100.0
-                    );
+        let mut kmap: Arc<Mutex<HashMap<u64, DictRecord>>> = Arc::new(Mutex::new(HashMap::new()));
+        for data_ptr in pointers_vec.into_iter() {
+            if cdc_data % 4 == 0 {
+                println!(
+                    "Data Left: ({}/{}) Scrubbed: % {}",
+                    cdc_data,
+                    kdata,
+                    (cdc_data as f32 / kdata as f32) * 100.0
+                );
+            }
+            for i in 0..THREADS_COUNT {
+                cdc_data += data_ptr[i].unwrap().len() + 8;
+            }
+            let mut vec_hmap: Vec<HashMap<u64, DictRecord>> = vec![];
+            let mut thread_ids = vec![];
+            for i in 0..THREADS_COUNT {
+                thread_ids.push(i);
+                vec_hmap.push(HashMap::default());
+            }
+            thread::scope(|s| {
+                for i in &thread_ids {
+                    let tmap = kmap.clone();
+                    s.spawn(move || {
+                        match data_ptr[*i] {
+                            Some(ptr) => {
+                                let k = append_dict(ptr);
+                                let mut kptr = tmap.lock().unwrap();
+                                kptr.extend(k)
+                            }
+                            None => {}
+                        }
+                    });
                 }
-                cdc_data += data_ptr.len() + 8;
-                self.analyser.make_dict(data_ptr);
-                self.chunker.add_cdc_chunk(data_ptr);
-
-                if data_ptr.len() % 20 == 0 {
-                    self.analyser.reduce_low_occur()
+            });
+            for i in 0..THREADS_COUNT {
+                match data_ptr[i] {
+                    Some(ptr) => {
+                        self.chunker.add_cdc_chunk(ptr);
+                        let y = data_ptr.to_vec();
+                        let tmp_key = FBCKey::new(hash_chunk(ptr), false);
+                        target_map
+                            .insert(tmp_key, ptr.to_vec().clone())
+                            .unwrap()
+                    }
+                    None => {}
                 }
-
-                let y = data_ptr.to_vec();
-                let tmp_key = FBCKey::new(hash_chunk(data_ptr), false);
-                target_map
-                    .insert(tmp_key, data_ptr.to_vec().clone())
-                    .unwrap()
             }
         }
-        self.analyser.process_dictionary();
+        /*
+            self.analyser.process_dictionary();
 
-        processed_data = cdc_data;
-        self.analyser.reduce_low_occur();
-        data_left = self.chunker.fbc_dedup(self.analyser.get_dict());
+            self.analyser.reduce_low_occur();
+            let dct = self.analyser.get_dict();
+            data_left = self.chunker.fbc_dedup(&dct);
+        */
         let running_time = start_time.elapsed();
+
         Ok(ScrubMeasurements {
             processed_data,
             running_time,
@@ -105,4 +149,3 @@ fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
     Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
     hasher.finish()
 }
-
