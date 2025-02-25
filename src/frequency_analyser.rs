@@ -1,4 +1,3 @@
-use qfilter::Filter;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -6,7 +5,6 @@ use std::sync::{Arc, Mutex};
 pub const MAX_CHUNK_SIZE: usize = 128;
 const MIN_CHUNK_SIZE: usize = 127;
 use std::hash::{DefaultHasher, Hasher};
-use std::thread;
 
 #[derive(Default)]
 pub struct DictRecord {
@@ -74,7 +72,7 @@ impl FrequencyAnalyser {
     pub fn print_dict(&self) {
         for i in self.dict.iter() {
             if i.1.occurrence_num > 1 {
-                println!("chunk: {:?} occurence: {}", i.1.chunk, i.1.occurrence_num)
+                println!("chunk: {:?} occurrence: {}", i.1.chunk, i.1.occurrence_num)
             }
         }
     }
@@ -85,7 +83,7 @@ impl FrequencyAnalyser {
             .collect();
     }
 }
-pub fn append_dict(first_stage_chunk: &Vec<u8>) -> HashMap<u64, DictRecord> {
+pub fn append_dict(dict_map: Arc<Mutex<HashMap<u64, DictRecord>>>, first_stage_chunk: &Vec<u8>) -> HashMap<u64, DictRecord> {
     let mut hmap: HashMap<u64, DictRecord> = HashMap::new();
     let mut temp_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
     for slice_index in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
@@ -102,17 +100,18 @@ pub fn append_dict(first_stage_chunk: &Vec<u8>) -> HashMap<u64, DictRecord> {
             }
             temp_chunks[chunk_size - MIN_CHUNK_SIZE][chunk_size] =
                 first_stage_chunk[start_index + chunk_size];
-            start_index += add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone(), &mut hmap);
+            start_index += add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone(), dict_map.clone());
         }
     }
-    return hmap;
+    hmap
 }
 
-fn add_chunk(chunk: Vec<u8>, target_map: &mut HashMap<u64, DictRecord>) -> usize {
+fn add_chunk(chunk: Vec<u8>, target_map: Arc<Mutex<HashMap<u64, DictRecord>>>) -> usize {
     let str_size = chunk.len();
     let mut hasher = DefaultHasher::new();
     hasher.write(chunk.as_slice());
     let chunk_hash = hasher.finish();
+    let mut target_map = target_map.lock().unwrap();
     if target_map.contains_key(&chunk_hash) {
         match target_map.get_mut(&chunk_hash) {
             Some(x) => match x.occurrence_num {
@@ -134,5 +133,17 @@ fn add_chunk(chunk: Vec<u8>, target_map: &mut HashMap<u64, DictRecord>) -> usize
             hash: chunk_hash,
         },
     );
-    4
+    16
+}
+
+pub fn count_deps(frequency: u32, ptr: &HashMap<u64, DictRecord>) -> (u32, u32) {
+    let mut count_dups = 0;
+    let mut total_count = 0;
+    for i in ptr.iter() {
+        if i.1.occurrence_num >= frequency {
+            count_dups += 1;
+        }
+        total_count += i.1.occurrence_num;
+    }
+    (count_dups, total_count)
 }
