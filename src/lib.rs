@@ -6,8 +6,7 @@ use std::cell::RefCell;
 use std::thread;
 
 use crate::fbc_chunker::ChunkerFBC;
-use crate::frequency_analyser::{count_deps, DictRecord, FrequencyAnalyser};
-use frequency_analyser::append_dict;
+use crate::frequency_analyser::{DictRecord, FrequencyAnalyser};
 use crate::storage::{FBCKey, FBCMap};
 use chunkfs::{
     ChunkHash, Data, DataContainer, Database, IterableDatabase, Scrub, ScrubMeasurements,
@@ -23,7 +22,7 @@ use std::time::Instant;
 const THREADS_COUNT: usize = 16;
 
 pub struct FBCScrubber {
-    pub analyser: Mutex<FrequencyAnalyser>,
+    pub analyser: FrequencyAnalyser,
     pub chunker: ChunkerFBC,
 }
 impl Default for FBCScrubber {
@@ -35,7 +34,7 @@ impl Default for FBCScrubber {
 impl FBCScrubber {
     pub fn new() -> FBCScrubber {
         FBCScrubber {
-            analyser: Mutex::new(FrequencyAnalyser::new()),
+            analyser: FrequencyAnalyser::new(),
             chunker: ChunkerFBC::default(),
         }
     }
@@ -77,39 +76,27 @@ where
                         }
                     },
                 }
-                /*
-                println!("{:?}", pointers_vec[pointers_vec.len() - 1].map(|x| {
-                    match x {
-                        Some(data_ptr) => Some(data_ptr[0..4].to_vec()),
-                        None => None
-                    }
-                }))
-                */
             }
         }
-        let mut kmap: Arc<Mutex<HashMap<u64, DictRecord>>> = Arc::new(Mutex::new(HashMap::new()));
+        println!("Packs collected");
         for data_ptr in pointers_vec.into_iter() {
-            for i in 0..THREADS_COUNT {
-                cdc_data += data_ptr[i].unwrap().len() + 8;
+            //println!("Pack encounting");
+            if (cdc_data > 166925888) {
+                break;
             }
-            let mut thread_ids = vec![];
             for i in 0..THREADS_COUNT {
-                thread_ids.push(i);
-            }
-            thread::scope(|s| {
-                for i in &thread_ids {
-                    let tmap = kmap.clone();
-                    s.spawn(move || {
-                        match data_ptr[*i] {
-                            Some(ptr) => {
-                                append_dict(tmap, ptr);
-                                //println!("THREAD_ID: {} [{:?}, {:?}, {:?}, {:?}]", *i, ptr[0], ptr[1], ptr[2], ptr[3]);
-                            }
-                            None => {}
-                        }
-                    });
+                match data_ptr[i] {
+                    Some(ptr) => {
+                        cdc_data += ptr.len() + 8;
+                    }
+                    None => {}
                 }
-            });
+            }
+            self.analyser.analyse_pack(data_ptr);
+
+            //println!("Packs analyzed");
+            //println!("THREAD_ID: {} [{:?}, {:?}, {:?}, {:?}]", *i, ptr[0], ptr[1], ptr[2], ptr[3]);
+
             for i in 0..THREADS_COUNT {
                 match data_ptr[i] {
                     Some(ptr) => {
@@ -121,22 +108,25 @@ where
                     None => {}
                 }
             }
-            if cdc_data % 4 == 0 {
+            if cdc_data % 40 == 0 {
                 println!(
-                    "Data Left: ({}/{}) Scrubbed: % {}, dups/size: {:?}",
+                    "Data Left: ({}/{}) Scrubbed: % {}, dups/size: ({}, {})",
                     cdc_data,
                     kdata,
-                    (cdc_data as f32 / kdata as f32) * 100.0,
-                    count_deps(2, &kmap.lock().unwrap()),
+                    (cdc_data as f32 / kdata as f32) * 100.0, self.analyser.count_candidates(2), self.analyser.dict.len()
                 );
+                // println!("{}", cdc_data % 1024 * 1024 * 32 - 1024 * 256 * THREADS_COUNT)
+            }
+            if (cdc_data % (500 * 16 / THREADS_COUNT) == 0) {
+                println!("ENTERED REDUCTION");
+                self.analyser.reduce_low_occur(2);
             }
         }
-        /*
-            self.analyser.process_dictionary();
-            self.analyser.reduce_low_occur();
-            let dct = self.analyser.get_dict();
-            data_left = self.chunker.fbc_dedup(&dct);
-        */
+
+
+        self.analyser.reduce_low_occur(2);
+        let dct = self.analyser.get_dict();
+        //data_left = self.chunker.fbc_dedup(&dct);
         let running_time = start_time.elapsed();
 
         Ok(ScrubMeasurements {
