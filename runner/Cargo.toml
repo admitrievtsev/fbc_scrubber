@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 fbc_scrubber = { path = ".." }
+dashmap = "7.0.0-rc2"
 
