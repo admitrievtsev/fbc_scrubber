@@ -82,7 +82,7 @@ impl ChunkerFBC {
             match self.chunks.get(id) {
                 None => { panic!("Chunk NPE") }
                 Solid(chunk) => { string_out.push_str(&Self::tostr(&chunk)); }
-                Sharped(chunks) => {}
+                Sharped(chunks) => { string_out.push_str(&Self::tostr(self.reconstruct_chunk(&chunks))) }
             }
         }
         //println!("PRINT TO FILE");
