@@ -14,6 +14,7 @@ use chunkfs::{
 use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
+pub use fbc_chunker::FBCHash;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;

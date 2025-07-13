@@ -12,7 +12,7 @@ use crate::hash_chunk;
 
 //DEBUG OLNY || Parameter of FSChunker
 const AGING_CONST: u64 = 1024 * 1024;
-type FBCHash = u64;
+pub type FBCHash = u64;
 
 const FIXED_CHUNKER_SIZE: usize = 64;
 
@@ -60,14 +60,15 @@ impl ChunkerFBC {
      */
 
     //Method that write text dedup out || DEBUG ONLY
-    pub fn reduplicate(&self, file_out: &str) {
+    pub fn reduplicate(&self, file_out: &str) -> usize {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
             string_out.push_str(&Self::tostr(&self.chunks[id]));
         }
         //println!("PRINT TO FILE");
         println!("{}", string_out.len());
-        fs::write(file_out, string_out).expect("Unable to write the file");
+        fs::write(file_out, &string_out).expect("Unable to write the file");
+        string_out.len()
     }
     //This method contains FBC chunker implementation
     pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>) -> usize {
@@ -112,6 +113,7 @@ impl ChunkerFBC {
                         > self.chunks[&chunk_index].len() as i128 - MAX_CHUNK_SIZE as i128
                     {
                         k_state = true;
+                        println!("some thing strange!!!(k_state if)");
                         break;
                     }
                     //println!("{} {} {} {} {}", dict_rec.1.get_chunk().len(), chunk_char, self.chunks[&chunk_index].len(), dict_rec.0, chunk_index);
@@ -137,6 +139,9 @@ impl ChunkerFBC {
                                 cut_out = self.insert_chunk(dict_rec.1.get_chunk().clone());
                             }
                             if chunk_char == 0 {
+                                /*
+                                 * if chunk start from is known
+                                 */
                                 let new_hash = self.insert_chunk(
                                     self.chunks[&chunk_index][dict_rec.1.get_chunk().len()
                                         ..self.chunks[&chunk_index].len()]
@@ -152,6 +157,9 @@ impl ChunkerFBC {
                                 split_two = true;
                                 //break
                             } else {
+                                /*
+                                 * if is known chunk in midle of chunk
+                                 */
                                 let new_hash_2nd = self.insert_chunk(
                                     self.chunks[&chunk_index][dict_rec.1.get_size() + chunk_char
                                         ..self.chunks[&chunk_index].len()]

@@ -1,3 +1,6 @@
+[workspace]
+members = ["runner"]
+
 [package]
 name = "fbc_scrubber"
 version = "0.1.0"
