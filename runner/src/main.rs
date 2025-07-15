@@ -62,8 +62,6 @@ fn f(name: &str, dt: usize) {
 }
 
 fn main() {
-    
-    
     let names = [
         "fbc_topic_input.txt",
         "lowinput.txt",

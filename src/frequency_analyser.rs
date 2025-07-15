@@ -29,6 +29,9 @@ impl DictRecord {
     pub fn get_size(&self) -> usize {
         self.size
     }
+    pub fn get_len(&self) -> usize {
+        Self::get_size(&self)
+    }
     pub fn get_occurrence_num(&self) -> u32 {
         self.occurrence_num
     }
@@ -305,8 +308,12 @@ impl FrequencyAnalyser {
 }
 
 impl DictRecord {
+    pub fn print_with_chunck(&self) {
+        Self::print(self);
+        println!("{:?}", self.chunk);
+    }
     pub fn print(&self) {
-        println!("{} {} {}\n{:?}", self.hash, self.occurrence_num, self.size, self.chunk);
+        println!("{} {} {}", self.hash, self.occurrence_num, self.size);
     }
 
     pub fn save_to_file(&self, file: &mut fs::File) -> Result<(), io::Error> {

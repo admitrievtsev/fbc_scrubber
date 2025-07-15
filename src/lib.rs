@@ -139,8 +139,8 @@ where
 }
 
 //Hashcode that uses chunker to put it into target_map
-fn hash_chunk(data_ptr: &Vec<u8>) -> u64 {
+fn hash_chunk(data_ptr: &[u8]) -> FBCHash {
     let mut hasher = DefaultHasher::new();
-    Hash::hash_slice(data_ptr.to_vec().as_slice(), &mut hasher);
+    Hash::hash_slice(data_ptr, &mut hasher);
     hasher.finish()
 }
