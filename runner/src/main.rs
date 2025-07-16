@@ -4,6 +4,7 @@ use std::fs::{self, File};
 
 use std::hash::{DefaultHasher, Hasher};
 use std::io::{BufWriter, Write};
+use std::str::FromStr;
 use dashmap::DashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -19,8 +20,8 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
     Ok(())
 }
 
-fn f(name: &str, dt: usize) {
-    let mut analyser = FrequencyAnalyser::new();
+fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> f64 {
+    let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes);
     let mut chunker = ChunkerFBC::default();
     let path_string = "../test_files_input/".to_string() + name;
     let path = std::path::Path::new(path_string.as_str());
@@ -43,7 +44,7 @@ fn f(name: &str, dt: usize) {
     //     // println!("chnk:\n{:?}", v.get_chunk());
     // }
 
-    let dedup = chunker.fbc_dedup(&a);
+    let dedup = chunker.fbc_dedup(&a, analyser.get_chunck_partitioning());
 
     let rededup = chunker.reduplicate("out.txt");
     if fs::read(path)
@@ -54,11 +55,12 @@ fn f(name: &str, dt: usize) {
     {
         println!("1) {}", rededup as f64 / dedup as f64);
         println!("MATCH")
+    } else {
+        panic!("NOT MATCH");
     }
     println!("");
 
-
-    // fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
+    rededup as f64 / dedup as f64
 }
 
 fn main() {
@@ -71,10 +73,32 @@ fn main() {
         128 * 2, 128 * 3, 128 * 4, 128 * 5, 128 * 6, 128 * 7, 128 * 8
     ];
 
+    let all_sizes = [
+        vec![32], vec![64], vec![128, 64], vec![256, 128, 64]
+    ];
+
+    let mut str_out = String::from_str("file_name;dt;sizes;res\n").unwrap();
+
     for name in names {
+        
         for dt in dts {
-            f(name, dt);
+            for sizes in all_sizes.iter() {
+                str_out.push_str(name);
+                str_out.push_str(";");
+                str_out.push_str(dt.to_string().as_str());
+                str_out.push_str(";");
+                for s in sizes {
+                    str_out.push_str(s.to_string().as_str());
+                    str_out.push_str(" ");
+                }
+                str_out.push_str(";");
+
+                let res = f(name, dt, sizes.clone());
+
+                str_out.push_str(res.to_string().as_str());
+                str_out.push_str("\n");
+            }
         }
     }
-    
+    fs::write("experement_result.csv", str_out.as_bytes()).unwrap();
 }

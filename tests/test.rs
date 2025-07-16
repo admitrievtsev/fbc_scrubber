@@ -19,7 +19,7 @@ mod tests {
         chunker.add_cdc_chunk(&contents[5500..6000].to_vec());
         chunker.add_cdc_chunk(&contents[6000..7000].to_vec());
         chunker.add_cdc_chunk(&contents[7000..contents.len()].to_vec());
-        chunker.fbc_dedup(&analyser.get_dict());
+        chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunck_partitioning());
         chunker.reduplicate("out.txt");
         assert_eq!(
             fs::read("test_files_input/lowinput.txt")

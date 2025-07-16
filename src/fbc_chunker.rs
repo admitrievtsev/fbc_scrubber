@@ -109,19 +109,18 @@ impl ChunkerFBC {
         string_out.len()
     }
     //This method contains FBC chunker implementation
-    pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>) -> usize {
-        //self.process_dictionary();
-        //self.reduce_low_occur();
+    pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>, chunck_partitioning: &Vec<(usize, usize)>) -> usize {
+        let min_chunck_size = chunck_partitioning.iter()
+            .map(|x| x.0)
+            .max()
+            .expect("panic on calculate min chunck size, fbs deduplicate");
         let mut k = 0;
         let mut chunk_deque: VecDeque<FBCHash> = VecDeque::new();
         for i in self.chunk_ids.iter() {
             chunk_deque.push_front(*i);
         }
 
-        //println!("{:?}", self.chunk_ids);
-
         while !chunk_deque.is_empty() {
-            //println!("{:?}", self.chunks.keys());
             if k % 100 == 0 {
                 println!("Checked: {}", chunk_deque.len())
             }
@@ -130,11 +129,6 @@ impl ChunkerFBC {
             // get hash
             let chunk_index = chunk_deque.pop_back().unwrap();
             
-            // check hash in saved hashes
-            // always true???
-            // if !self.chunks.contains_key(&chunk_index) {
-            //     continue;
-            // };
             // create reference to chunck to cut
             let unchecked_chunk = match &self.chunks.get(&chunk_index).expect("Chunk NPE") {
                 Sharped(_) => { continue }
@@ -143,123 +137,80 @@ impl ChunkerFBC {
             // move in chunck
             let mut chunk_char = 0;
             while (chunk_char as i128)
-                < unchecked_chunk.len() as i128 - MAX_CHUNK_SIZE as i128
+                < unchecked_chunk.len() as i128 - min_chunck_size as i128
             {
-                //println!("{}", self.dict_count_size());
-                //println!("{} {} {}", chunk_index, self.chunks.len(), chunk_char);
+                let mut chunk_hash = 0;
+                let mut dict_rec = None;
 
-                // let mut tmp_vec: Vec<u8> = Vec::with_capacity(MAX_CHUNK_SIZE);
-                // for i in 0..MAX_CHUNK_SIZE {
-                //     tmp_vec.push(unchecked_chunk[chunk_char + i]);
-                // }
-                // let chunk_hash = hash_chunk(&tmp_vec);
-
-                let chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + MAX_CHUNK_SIZE]);
-                let mut k_state = false;
-                let mut split_two = false;
-                if dict.contains_key(&chunk_hash) {
-                    // dist record have hash
-                    let dict_rec = dict.get(&chunk_hash).unwrap();
-                    
-                    // always false if ???
-                    if chunk_char as i128
-                        > unchecked_chunk.len() as i128 - MAX_CHUNK_SIZE as i128
-                    {
-                        k_state = true;
-                        panic!("some thing strange!!!(chunk_char as i128 > 
-                            unchecked_chunk.len() as i128 - MAX_CHUNK_SIZE as i128, if)");
+                for (_, size) in chunck_partitioning.iter() {
+                    if (chunk_char as i128)
+                        < unchecked_chunk.len() as i128 - *size as i128 {
+                        continue;
                     }
-                    //println!("{} {} {} {} {}", dict_rec.1.get_chunk().len(), chunk_char, self.chunks[&chunk_index].len(), dict_rec.0, chunk_index);
-
-                    // always true if ???
-                    // dict_rec.get_len() < MAX_CHUNK_SIZE
-                    // chunk_char >= 0 & chunk_char < unchecked_chunk.len() - MAX_CHUNK_SIZE
-                    // => unchecked_chunk.len() > MAX_CHUNK_SIZE > dict_rec.get_len()
-                    if dict_rec.get_len() < unchecked_chunk.len() {
-                        /*
-                        let is_chunk_correct = true;
-                        for char_index in 0..dict_rec.1.get_chunk().len() {
-                            if dict_rec.1.get_chunk()[char_index]
-                                != self.chunks[chunk_index][chunk_char + char_index]
-                            {
-                                is_chunk_correct = false;
-                                break;
-                            }
-                        }
-                        
-                        if is_chunk_correct {
-                        */
-                        
-                        if chunk_char == 0 {
-                            // if big chunk start from is known
-                            
-                            let new_chunck = unchecked_chunk[dict_rec.get_len()..].to_owned();
-                            let new_hash = self.insert_chunk(new_chunck);
-                            
-                            // add new chunck for analize
-                            chunk_deque.push_front(new_hash);
-                            
-                            self.replace_all_two(
-                                chunk_index, 
-                                chunk_hash, 
-                                new_hash);
-                        } else if chunk_char + dict_rec.get_len() + 1 == unchecked_chunk.len() {
-                            // if is known chunk in end of big chunk
-
-                            let new_chunck = unchecked_chunk[..chunk_char].to_owned();
-                            let new_hash = self.insert_chunk(new_chunck);
-                            
-                            // not add chunck for analize
-                            
-                            self.replace_all_two(
-                                chunk_index,
-                                new_hash,
-                                chunk_hash,
-                            );
-                        }
-                        else {
-                            // if is known chunk in midle of big chunk
-                            
-                            // start
-                            let new_chunck_1st = unchecked_chunk[..chunk_char].to_owned();
-                            //end
-                            let new_chunck_2st = unchecked_chunk[chunk_char + dict_rec.get_len()..].to_owned();
-
-                            let new_hash_1st = self.insert_chunk(new_chunck_1st);
-                            let new_hash_2nd = self.insert_chunk(new_chunck_2st);
-                            
-                            // add new chunck for analize
-                            chunk_deque.push_front(new_hash_2nd);
-
-                            self.replace_all_three(
-                                chunk_index,
-                                new_hash_1st,
-                                chunk_hash,
-                                new_hash_2nd,
-                            );
-                        }
-                        
-                        // 
-                        if !self.chunks.contains_key(&chunk_hash) {
-                            let _ = self.insert_chunk(dict_rec.get_chunk());
-                        }
-                        break;
-                    } else {
-                        panic!("some thing strange!!!(dict_rec.get_chunk().len() < unchecked_chunk.len(), if)");
+                    chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
+                    if dict.contains_key(&chunk_hash) {
+                        // dist record have hash
+                        dict_rec = dict.get(&chunk_hash);
                     }
                 }
-                
-                // panic before
-                // if k_state {
-                //     //println!("KSTATE");
-                //     break;
-                // }
-                // unuseless if
-                // if !split_two {
-                //     chunk_char += 1;
-                // }
-                
-                chunk_char += 1;
+
+                if let Some(dict_rec) = dict_rec {
+                    if chunk_char == 0 {
+                        // if big chunk start from is known
+                        
+                        let new_chunck = unchecked_chunk[dict_rec.get_len()..].to_owned();
+                        let new_hash = self.insert_chunk(new_chunck);
+                        
+                        // add new chunck for analize
+                        chunk_deque.push_front(new_hash);
+                        
+                        self.replace_all_two(
+                            chunk_index, 
+                            chunk_hash, 
+                            new_hash);
+                    } else if chunk_char + dict_rec.get_len() + 1 == unchecked_chunk.len() {
+                        // if is known chunk in end of big chunk
+
+                        let new_chunck = unchecked_chunk[..chunk_char].to_owned();
+                        let new_hash = self.insert_chunk(new_chunck);
+                        
+                        // not add chunck for analize
+                        
+                        self.replace_all_two(
+                            chunk_index,
+                            new_hash,
+                            chunk_hash,
+                        );
+                    }
+                    else {
+                        // if is known chunk in midle of big chunk
+                        
+                        // start
+                        let new_chunck_1st = unchecked_chunk[..chunk_char].to_owned();
+                        //end
+                        let new_chunck_2st = unchecked_chunk[chunk_char + dict_rec.get_len()..].to_owned();
+
+                        let new_hash_1st = self.insert_chunk(new_chunck_1st);
+                        let new_hash_2nd = self.insert_chunk(new_chunck_2st);
+                        
+                        // add new chunck for analize
+                        chunk_deque.push_front(new_hash_2nd);
+
+                        self.replace_all_three(
+                            chunk_index,
+                            new_hash_1st,
+                            chunk_hash,
+                            new_hash_2nd,
+                        );
+                    }
+                    
+                    if !self.chunks.contains_key(&chunk_hash) {
+                        let _ = self.insert_chunk(dict_rec.get_chunk());
+                    }
+                    break;
+                } else {
+                    chunk_char += 1;
+                }
             }
         }
         println!(

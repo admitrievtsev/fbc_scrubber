@@ -44,14 +44,30 @@ impl Clone for DictRecord {
 
 pub struct FrequencyAnalyser {
     pub(crate) dict: Arc<DashMap<u64, DictRecord>>,
+    chunck_partitioning: Vec<(usize, usize)>,
 }
 
 impl FrequencyAnalyser {
     pub fn new() -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
+            chunck_partitioning: vec![(64, 16)],
         }
     }
+    pub fn new_with_distribution(chunck_partitioning: Vec<(usize, usize)>) -> Self {
+        FrequencyAnalyser {
+            dict: Arc::new(DashMap::new()),
+            chunck_partitioning,
+        }
+    }
+
+    pub fn new_with_sizes(chunck_sizes: Vec<usize>) -> Self {
+        FrequencyAnalyser {
+            dict: Arc::new(DashMap::new()),
+            chunck_partitioning: chunck_sizes.into_iter().map(|size| {(size, size / 4)}).collect(),
+        }
+    }
+
 
     pub fn get_dict(&mut self) -> HashMap<u64, DictRecord> {
         let mut tmp_hmap = HashMap::new();
@@ -59,6 +75,10 @@ impl FrequencyAnalyser {
             tmp_hmap.insert(i.hash, i.clone());
         }
         tmp_hmap
+    }
+
+    pub fn get_chunck_partitioning(&self) -> &Vec<(usize, usize)> {
+        &self.chunck_partitioning
     }
 
     /*
@@ -131,55 +151,38 @@ impl FrequencyAnalyser {
     }
 
     pub fn append_dict(&self, first_stage_chunk: &Vec<u8>) {
-        // println!("input:\n{:?}", first_stage_chunk[0..2 * 128].to_vec());
+        let min_chunck_size = self.chunck_partitioning.iter()
+            .map(|x| x.0)
+            .max()
+            .expect("panic on calculate min chunck size, append dist");
+        
 
         let mut start_index = 1;
-        while start_index <= first_stage_chunk.len() - MAX_CHUNK_SIZE {
-            for mut chunk_size in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
-                // for char_index in 1..chunk_size + 1 {
-                //     temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index - 1] =
-                //         temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index]
-                // }
-                // temp_chunks[chunk_size - MIN_CHUNK_SIZE][chunk_size] =
-                //     first_stage_chunk[start_index + chunk_size];
-
-                // ????
-                chunk_size += 1;
-
-                // println!("chunsk:\n{:?}", temp_chunks[chunk_size - MIN_CHUNK_SIZE]);
-                start_index += FrequencyAnalyser::add_chunk(&first_stage_chunk[start_index..start_index + chunk_size], self.dict.clone());
-                
-                // let mut s = String::default();
-                // std::io::stdin().read_line(&mut s);
+        while start_index < first_stage_chunk.len() - min_chunck_size {
+            for (offset, size) in self.chunck_partitioning.iter() {
+                if start_index < first_stage_chunk.len() - size {
+                    if FrequencyAnalyser::add_chunk(
+                        &first_stage_chunk[start_index..start_index + size], 
+                        self.dict.clone()) {
+                        start_index += offset;
+                    } else {
+                        start_index += size;
+                    }
+                }
             }
         }
     }
 
-    pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<u64, DictRecord>>) -> usize {
+    // return is chunck was inserted to target map 
+    pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<u64, DictRecord>>) -> bool {
         //println!("Add started");
         let str_size = chunk.len();
         let chunk_hash = hash_chunk(chunk);
         //println!("Ready to check");
         match target_map.get_mut(&chunk_hash) {
             Some(mut x) => {
-                match x.occurrence_num {
-                    1 => {
-                        //println!("FFOUNd");
-                        x.occurrence_num += 1;
-                        // ???
-                        // MIN_CHUNK_SIZE
-                        MAX_CHUNK_SIZE
-                    },
-                    _ => {
-                        // ??? need or not?
-                        x.occurrence_num += 1;
-                        //println!("ALREADY WRITTEN");
-                        // ???
-                        // MIN_CHUNK_SIZE
-                        MAX_CHUNK_SIZE
-
-                    }
-                }
+                x.occurrence_num += 1;
+                false // size
             },
             None => {
                 target_map.insert(
@@ -191,9 +194,7 @@ impl FrequencyAnalyser {
                         hash: chunk_hash,
                     },
                 );
-
-                // ???
-                16
+                true // offset
             }
         }
     }
