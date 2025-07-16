@@ -22,8 +22,9 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
 fn f(name: &str, dt: usize) {
     let mut analyser = FrequencyAnalyser::new();
     let mut chunker = ChunkerFBC::default();
-    let file = "../test_files_input/".to_string() + name;
-    let contents = fs::read(&file)
+    let path_string = "../test_files_input/".to_string() + name;
+    let path = std::path::Path::new(path_string.as_str());
+    let contents = fs::read(&path)
         .expect("Should have been able to read the file");
     analyser.append_dict(&contents);
     
@@ -45,20 +46,19 @@ fn f(name: &str, dt: usize) {
     let dedup = chunker.fbc_dedup(&a);
 
     let rededup = chunker.reduplicate("out.txt");
-    if fs::read(file)
+    if fs::read(path)
             .expect("Should have been able to read lowinput")
         == 
         fs::read("out.txt")
             .expect("Should have been able to read out file")
     {
-        println!("{}", rededup as f64 / dedup as f64);
-        // let mut a = BufWriter::new(std::fs::File::("a.txt").unwrap());
-        // a.write( (rededup as f64 / dedup as f64).to_be_bytes().as_ref());
-        
+        println!("1) {}", rededup as f64 / dedup as f64);
         println!("MATCH")
     }
     println!("");
-    fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
+
+
+    // fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
 }
 
 fn main() {

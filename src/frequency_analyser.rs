@@ -9,7 +9,7 @@ use std::{default, mem, thread};
 use std::io::{self, Read, Seek, Write};
 use std::fs;
 use std::path;
-use crate::THREADS_COUNT;
+use crate::{hash_chunk, THREADS_COUNT};
 use crate::FBCHash;
 
 
@@ -131,29 +131,23 @@ impl FrequencyAnalyser {
     }
 
     pub fn append_dict(&self, first_stage_chunk: &Vec<u8>) {
-        let mut temp_chunks: Vec<Vec<u8>> = vec![vec![]; MAX_CHUNK_SIZE - MIN_CHUNK_SIZE];
-        for slice_index in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
-            for char in first_stage_chunk.iter().take(slice_index + 1) {
-                temp_chunks[slice_index - MIN_CHUNK_SIZE].push(*char);
-            }
-        }
         // println!("input:\n{:?}", first_stage_chunk[0..2 * 128].to_vec());
 
         let mut start_index = 1;
         while start_index <= first_stage_chunk.len() - MAX_CHUNK_SIZE {
-            for chunk_size in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
+            for mut chunk_size in MIN_CHUNK_SIZE..MAX_CHUNK_SIZE {
                 // for char_index in 1..chunk_size + 1 {
                 //     temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index - 1] =
                 //         temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index]
                 // }
                 // temp_chunks[chunk_size - MIN_CHUNK_SIZE][chunk_size] =
                 //     first_stage_chunk[start_index + chunk_size];
-                for char_index in 0..=chunk_size {
-                    temp_chunks[chunk_size - MIN_CHUNK_SIZE][char_index] = first_stage_chunk[start_index + char_index];
-                }
+
+                // ????
+                chunk_size += 1;
 
                 // println!("chunsk:\n{:?}", temp_chunks[chunk_size - MIN_CHUNK_SIZE]);
-                start_index += FrequencyAnalyser::add_chunk(temp_chunks[chunk_size - MIN_CHUNK_SIZE].clone(), self.dict.clone());
+                start_index += FrequencyAnalyser::add_chunk(&first_stage_chunk[start_index..start_index + chunk_size], self.dict.clone());
                 
                 // let mut s = String::default();
                 // std::io::stdin().read_line(&mut s);
@@ -161,49 +155,47 @@ impl FrequencyAnalyser {
         }
     }
 
-    pub fn add_chunk(chunk: Vec<u8>, target_map: Arc<DashMap<u64, DictRecord>>) -> usize {
+    pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<u64, DictRecord>>) -> usize {
         //println!("Add started");
         let str_size = chunk.len();
-        let mut hasher = DefaultHasher::new();
-        hasher.write(chunk.as_slice());
-        let chunk_hash = hasher.finish();
+        let chunk_hash = hash_chunk(chunk);
         //println!("Ready to check");
-        if target_map.contains_key(&chunk_hash) {
-            //println!("Key contains");
-            match target_map.get_mut(&chunk_hash) {
-                Some(mut x) => return match x.occurrence_num {
+        match target_map.get_mut(&chunk_hash) {
+            Some(mut x) => {
+                match x.occurrence_num {
                     1 => {
                         //println!("FFOUNd");
                         x.occurrence_num += 1;
-                        MIN_CHUNK_SIZE
-                    }
+                        // ???
+                        // MIN_CHUNK_SIZE
+                        MAX_CHUNK_SIZE
+                    },
                     _ => {
+                        // ??? need or not?
                         x.occurrence_num += 1;
                         //println!("ALREADY WRITTEN");
-                        MIN_CHUNK_SIZE
+                        // ???
+                        // MIN_CHUNK_SIZE
+                        MAX_CHUNK_SIZE
+
                     }
-                },
-                None => panic!("chunk hash does not exists"),
-            }
-
-            println!("Return from append");
-        }
-        //println!("Add finished, insert then");
-
-        //println!("CHUNK {:?}", chunk);
-
-        target_map.insert(
-            chunk_hash,
-            DictRecord {
-                chunk: chunk.to_vec(),
-                occurrence_num: 1,
-                size: str_size,
-                hash: chunk_hash,
+                }
             },
-        );
+            None => {
+                target_map.insert(
+                    chunk_hash,
+                    DictRecord {
+                        chunk: chunk.to_vec(),
+                        occurrence_num: 1,
+                        size: str_size,
+                        hash: chunk_hash,
+                    },
+                );
 
-        //println!("Func finished");
-        16
+                // ???
+                16
+            }
+        }
     }
 }
 

@@ -114,8 +114,8 @@ impl ChunkerFBC {
         //self.reduce_low_occur();
         let mut k = 0;
         let mut chunk_deque: VecDeque<FBCHash> = VecDeque::new();
-        for i in self.chunks.iter() {
-            chunk_deque.push_front(*i.0)
+        for i in self.chunk_ids.iter() {
+            chunk_deque.push_front(*i);
         }
 
         //println!("{:?}", self.chunk_ids);
@@ -129,10 +129,12 @@ impl ChunkerFBC {
             
             // get hash
             let chunk_index = chunk_deque.pop_back().unwrap();
+            
             // check hash in saved hashes
-            if !self.chunks.contains_key(&chunk_index) {
-                continue;
-            };
+            // always true???
+            // if !self.chunks.contains_key(&chunk_index) {
+            //     continue;
+            // };
             // create reference to chunck to cut
             let unchecked_chunk = match &self.chunks.get(&chunk_index).expect("Chunk NPE") {
                 Sharped(_) => { continue }
@@ -197,14 +199,6 @@ impl ChunkerFBC {
                             // add new chunck for analize
                             chunk_deque.push_front(new_hash);
                             
-                            //self.chunks.remove(&chunk_index);
-                            
-                            // if for what?
-                            if chunk_index != chunk_hash 
-                                && chunk_index != new_hash {
-                                    self.chunks.remove(&chunk_index);
-                            }
-                            
                             self.replace_all_two(
                                 chunk_index, 
                                 chunk_hash, 
@@ -217,12 +211,6 @@ impl ChunkerFBC {
                             
                             // not add chunck for analize
                             
-                            // if for what?
-                            if chunk_index != chunk_hash
-                                && chunk_index != new_hash
-                            {
-                                self.chunks.remove(&chunk_index);
-                            }
                             self.replace_all_two(
                                 chunk_index,
                                 new_hash,
@@ -242,14 +230,6 @@ impl ChunkerFBC {
                             
                             // add new chunck for analize
                             chunk_deque.push_front(new_hash_2nd);
-                            
-                            // if for what?
-                            if chunk_index != chunk_hash
-                                && chunk_index != new_hash_1st
-                                && chunk_index != new_hash_2nd
-                            {
-                                self.chunks.remove(&chunk_index);
-                            }
 
                             self.replace_all_three(
                                 chunk_index,
@@ -284,10 +264,14 @@ impl ChunkerFBC {
         }
         println!(
             "{}",
-            self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8
+            self.dict_size() + self.chunk_ids.len() * 8
         );
-        self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8
+        
+        
+
+        self.dict_size() + self.chunk_ids.len() * 8
     }
+
     fn hash_chunk(tmp_vec: &Vec<u8>) -> u64 {
         let mut hasher = DefaultHasher::new();
         hasher.write(tmp_vec.as_slice());
@@ -295,12 +279,12 @@ impl ChunkerFBC {
     }
     // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash) {
-        self.chunks.insert(to_change, FBCChunk::Sharped(vec![first, second]));
+        *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second]);
     }
 
     // Slicing chunk on 3 different
     fn replace_all_three(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash, third: FBCHash) {
-        self.chunks.insert(to_change, FBCChunk::Sharped(vec![first, second, third]));
+        *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second, third]);
     }
 
     // Optimization Method
@@ -308,6 +292,16 @@ impl ChunkerFBC {
     // It will force scrubber to run faster but also will reduce dedup gain
     fn dict_count_size(&self) -> usize {
         self.chunks.values().fold(0, |acc, x| acc + x.len(&self.chunks))
+    }
+
+    // compute size to storage chuncks
+    fn dict_size(&self) -> usize {
+        self.chunks.values().fold(0, |acc, x| {
+            acc + match &x { 
+                FBCChunk::Solid(chunck) => chunck.len(),
+                FBCChunk::Sharped(chuncks) => chuncks.len() * size_of::<FBCHash>(),
+            }
+        })
     }
 
     // FSDedup Chunker
