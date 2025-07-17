@@ -108,11 +108,14 @@ impl ChunkerFBC {
         fs::write(file_out, &string_out).expect("Unable to write the file");
         string_out.len()
     }
-    //This method contains FBC chunker implementation
+    // This method contains FBC chunker implementation
+    /// chunck_partitioning - size, offset
+    /// first places get first check
+    /// if approach big and small sizes win is the first one specified 
     pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>, chunck_partitioning: &Vec<(usize, usize)>) -> usize {
         let min_chunck_size = chunck_partitioning.iter()
             .map(|x| x.0)
-            .max()
+            .min()
             .expect("panic on calculate min chunck size, fbs deduplicate");
         let mut k = 0;
         let mut chunk_deque: VecDeque<FBCHash> = VecDeque::new();
@@ -142,15 +145,14 @@ impl ChunkerFBC {
                 let mut chunk_hash = 0;
                 let mut dict_rec = None;
 
-                for (_, size) in chunck_partitioning.iter() {
-                    if (chunk_char as i128)
-                        < unchecked_chunk.len() as i128 - *size as i128 {
-                        continue;
-                    }
-                    chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
-                    if dict.contains_key(&chunk_hash) {
-                        // dist record have hash
-                        dict_rec = dict.get(&chunk_hash);
+                for (size, _) in chunck_partitioning.iter() {
+                    if (chunk_char as i128) < unchecked_chunk.len() as i128 - *size as i128 {
+                        chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
+                        if dict.contains_key(&chunk_hash) {
+                            // dist record have hash
+                            dict_rec = dict.get(&chunk_hash);
+                            break;
+                        }
                     }
                 }
 
@@ -231,6 +233,8 @@ impl ChunkerFBC {
     // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash) {
         *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second]);
+
+
     }
 
     // Slicing chunk on 3 different

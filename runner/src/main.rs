@@ -20,8 +20,8 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
     Ok(())
 }
 
-fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> f64 {
-    let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes);
+fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
+    let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes.clone());
     let mut chunker = ChunkerFBC::default();
     let path_string = "../test_files_input/".to_string() + name;
     let path = std::path::Path::new(path_string.as_str());
@@ -47,20 +47,30 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> f64 {
     let dedup = chunker.fbc_dedup(&a, analyser.get_chunck_partitioning());
 
     let rededup = chunker.reduplicate("out.txt");
+    
+    println!("dedup: {}", rededup as f64 / dedup as f64);
+    print!("name: {}\ndt: {}\nsizes: ", name, dt);
+    for it in analize_sizes {
+        print!("{it} ");
+    }
+    println!("");
+    println!("");
+    println!("");
+    
     if fs::read(path)
             .expect("Should have been able to read lowinput")
-        == 
+        != 
         fs::read("out.txt")
             .expect("Should have been able to read out file")
     {
-        println!("1) {}", rededup as f64 / dedup as f64);
-        println!("MATCH")
+        let mut name = String::new();
+        println!("NOT MATCH");
+        std::io::stdin().read_line(&mut name);
+        None
     } else {
-        panic!("NOT MATCH");
+        Some(rededup as f64 / dedup as f64)
     }
-    println!("");
 
-    rededup as f64 / dedup as f64
 }
 
 fn main() {
@@ -74,13 +84,14 @@ fn main() {
     ];
 
     let all_sizes = [
-        vec![32], vec![64], vec![128, 64], vec![256, 128, 64]
+        vec![32], vec![64], vec![128], vec![256], 
+        vec![64, 32], vec![128, 64, 32], vec![128, 64], vec![256, 128, 64], vec![256, 128],
+        vec![256, 64], vec![128, 32]
     ];
 
     let mut str_out = String::from_str("file_name;dt;sizes;res\n").unwrap();
 
     for name in names {
-        
         for dt in dts {
             for sizes in all_sizes.iter() {
                 str_out.push_str(name);
@@ -93,9 +104,15 @@ fn main() {
                 }
                 str_out.push_str(";");
 
-                let res = f(name, dt, sizes.clone());
+                match f(name, dt, sizes.clone()) {
+                    Some(res) => {
+                        str_out.push_str(res.to_string().as_str());
+                    }
+                    None => {
+                        str_out.push_str("NOT MATCH");
+                    }
+                }
 
-                str_out.push_str(res.to_string().as_str());
                 str_out.push_str("\n");
             }
         }

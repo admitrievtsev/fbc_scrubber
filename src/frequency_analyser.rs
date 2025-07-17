@@ -44,6 +44,7 @@ impl Clone for DictRecord {
 
 pub struct FrequencyAnalyser {
     pub(crate) dict: Arc<DashMap<u64, DictRecord>>,
+    /// size, offset
     chunck_partitioning: Vec<(usize, usize)>,
 }
 
@@ -151,24 +152,17 @@ impl FrequencyAnalyser {
     }
 
     pub fn append_dict(&self, first_stage_chunk: &Vec<u8>) {
-        let min_chunck_size = self.chunck_partitioning.iter()
-            .map(|x| x.0)
-            .max()
-            .expect("panic on calculate min chunck size, append dist");
-        
-
         let mut start_index = 1;
-        while start_index < first_stage_chunk.len() - min_chunck_size {
-            for (offset, size) in self.chunck_partitioning.iter() {
-                if start_index < first_stage_chunk.len() - size {
-                    if FrequencyAnalyser::add_chunk(
-                        &first_stage_chunk[start_index..start_index + size], 
-                        self.dict.clone()) {
-                        start_index += offset;
-                    } else {
-                        start_index += size;
-                    }
+        for (size, offset, ) in self.chunck_partitioning.iter() {
+            while start_index < first_stage_chunk.len() - size {
+                if FrequencyAnalyser::add_chunk(
+                    &first_stage_chunk[start_index..start_index + size], 
+                    self.dict.clone()) {
+                    start_index += offset;
+                } else {
+                    start_index += size;
                 }
+            
             }
         }
     }
