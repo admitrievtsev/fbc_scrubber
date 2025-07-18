@@ -4,6 +4,7 @@ use std::fs::{self, File};
 
 use std::hash::{DefaultHasher, Hasher};
 use std::io::{BufWriter, Write};
+use std::str::FromStr;
 use dashmap::DashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -19,11 +20,12 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
     Ok(())
 }
 
-fn f(name: &str, dt: usize) {
-    let mut analyser = FrequencyAnalyser::new();
+fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
+    let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes.clone());
     let mut chunker = ChunkerFBC::default();
-    let file = "../test_files_input/".to_string() + name;
-    let contents = fs::read(&file)
+    let path_string = "../test_files_input/".to_string() + name;
+    let path = std::path::Path::new(path_string.as_str());
+    let contents = fs::read(&path)
         .expect("Should have been able to read the file");
     analyser.append_dict(&contents);
     
@@ -42,28 +44,36 @@ fn f(name: &str, dt: usize) {
     //     // println!("chnk:\n{:?}", v.get_chunk());
     // }
 
-    let dedup = chunker.fbc_dedup(&a);
+    let dedup = chunker.fbc_dedup(&a, analyser.get_chunck_partitioning());
 
     let rededup = chunker.reduplicate("out.txt");
-    if fs::read(file)
+    
+    println!("dedup: {}", rededup as f64 / dedup as f64);
+    print!("name: {}\ndt: {}\nsizes: ", name, dt);
+    for it in analize_sizes {
+        print!("{it} ");
+    }
+    println!("");
+    println!("");
+    println!("");
+    
+    if fs::read(path)
             .expect("Should have been able to read lowinput")
-        == 
+        != 
         fs::read("out.txt")
             .expect("Should have been able to read out file")
     {
-        println!("{}", rededup as f64 / dedup as f64);
-        // let mut a = BufWriter::new(std::fs::File::("a.txt").unwrap());
-        // a.write( (rededup as f64 / dedup as f64).to_be_bytes().as_ref());
-        
-        println!("MATCH")
+        let mut name = String::new();
+        println!("NOT MATCH");
+        std::io::stdin().read_line(&mut name);
+        None
+    } else {
+        Some(rededup as f64 / dedup as f64)
     }
-    println!("");
-    fs::remove_file("out.txt").expect("File out.txt not exists in current directory");
+
 }
 
 fn main() {
-    
-    
     let names = [
         "fbc_topic_input.txt",
         "lowinput.txt",
@@ -73,10 +83,45 @@ fn main() {
         128 * 2, 128 * 3, 128 * 4, 128 * 5, 128 * 6, 128 * 7, 128 * 8
     ];
 
+    let all_sizes = [
+        vec![32], vec![64], vec![128], vec![256], 
+        vec![64, 32], vec![128, 64, 32], vec![128, 64], vec![256, 128, 64], vec![256, 128],
+        vec![256, 64], vec![128, 32]
+    ];
+
+    let mut str_out = String::from_str("file_name;dt;sizes;res\n").unwrap();
+
     for name in names {
         for dt in dts {
-            f(name, dt);
+            for sizes in all_sizes.iter() {
+                str_out.push_str(name);
+                str_out.push_str(";");
+                str_out.push_str(dt.to_string().as_str());
+                str_out.push_str(";");
+                for s in sizes {
+                    str_out.push_str(s.to_string().as_str());
+                    str_out.push_str(" ");
+                }
+                str_out.push_str(";");
+
+                if name.to_string() == "lowinput.txt" &&
+                    sizes.len() > 1 {
+                    str_out.push_str("STACK OVERFLOW");
+                    println!("STACK OVERFLOW\n");
+                } else {
+                    match f(name, dt, sizes.clone()) {
+                        Some(res) => {
+                            str_out.push_str(res.to_string().as_str());
+                        }
+                        None => {
+                            str_out.push_str("NOT MATCH");
+                        }
+                    }
+                }
+
+                str_out.push_str("\n");
+            }
         }
     }
-    
+    fs::write("experement_result.csv", str_out.as_bytes()).unwrap();
 }

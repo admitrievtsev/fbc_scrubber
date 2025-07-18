@@ -27,9 +27,22 @@ macro_rules! inc {
 }
 
 enum FBCChunk {
-    None,
     Solid(Vec<u8>),
     Sharped(Vec<FBCHash>),
+}
+
+impl FBCChunk {
+    /// calculate len of chunck
+    fn len(&self, map: &HashMap<FBCHash, FBCChunk>) -> usize {
+        match &self {
+            Solid(sl) => { sl.len() },
+            Sharped(sh) => { 
+                sh.iter().fold(0, |acc, element| { 
+                    acc + Self::len(map.get(element).expect("Chunk NPE"), map)
+                })
+            }
+        }
+    }
 }
 
 //Struct that provide frequency analysis for chunks
@@ -40,17 +53,21 @@ pub struct ChunkerFBC {
 }
 
 impl ChunkerFBC {
+    /// hash chunck and insert solid chunk in chuncks
+    // maybe add_chunk ?
     fn insert_chunk(&mut self, chunk: Vec<u8>) -> FBCHash {
-        self.chunks.insert(hash_chunk(&chunk), Solid(chunk.clone()));
-        hash_chunk(&chunk)
+        let hash = hash_chunk(chunk.as_slice());
+        self.chunks.insert(hash, Solid(chunk));
+        hash
     }
+    // maybe insert_cdc_chunk ?
     pub fn add_cdc_chunk(&mut self, first_stage_chunk: &Vec<u8>) {
         let res = self.insert_chunk(first_stage_chunk.clone());
         self.chunk_ids.push(res);
     }
     //This method is to print chunking results out
-    fn tostr(word: &Vec<u8>) -> String {
-        String::from_utf8(word.to_vec()).expect("UTF-8 formatting failure")
+    fn to_str(word: Vec<u8>) -> String {
+        String::from_utf8(word).expect("UTF-8 formatting failure")
     }
 
     //Updating analyser occurrences counter
@@ -64,214 +81,182 @@ impl ChunkerFBC {
     }
 
      */
-    fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>) -> &Vec<u8> {
+    fn reconstruct_chunk_from_hash(&self, hash: &FBCHash) -> Vec<u8> {
+        let mut main_chunk: Vec<u8> = vec![];
+        match self.chunks.get(&hash).expect("Chunk NPE") {
+            Solid(chunk) => { main_chunk.append(&mut chunk.clone()) }
+            Sharped(chunks) => { main_chunk.append(&mut self.reconstruct_chunk(&chunks)) }
+        }
+        main_chunk
+    }
+
+    fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>) -> Vec<u8> {
         let mut main_chunk: Vec<u8> = vec![];
         for hash in hashes {
-            match self.chunks.get(&hash) {
-                None => { panic!("Chunk NPE") }
-                Solid(mut chunk) => { main_chunk.append(&mut chunk) }
-                Sharped(chunks) => { main_chunk.append(&mut self.reconstruct_chunk(&chunks)) }
-            }
+            main_chunk.append(&mut Self::reconstruct_chunk_from_hash(self, hash));
         }
-        &main_chunk
+        main_chunk
     }
     //Method that write text dedup out || DEBUG ONLY
     pub fn reduplicate(&self, file_out: &str) -> usize {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
-            match self.chunks.get(id) {
-                None => { panic!("Chunk NPE") }
-                Solid(chunk) => { string_out.push_str(&Self::tostr(&chunk)); }
-                Sharped(chunks) => { string_out.push_str(&Self::tostr(self.reconstruct_chunk(&chunks))) }
-            }
+            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id)));
         }
         //println!("PRINT TO FILE");
         println!("{}", string_out.len());
         fs::write(file_out, &string_out).expect("Unable to write the file");
         string_out.len()
     }
-    //This method contains FBC chunker implementation
-    pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>) -> usize {
-        //self.process_dictionary();
-        //self.reduce_low_occur();
+    // This method contains FBC chunker implementation
+    /// chunck_partitioning - size, offset
+    /// first places get first check
+    /// if approach big and small sizes win is the first one specified 
+    pub fn fbc_dedup(&mut self, dict: &HashMap<u64, DictRecord>, chunck_partitioning: &Vec<(usize, usize)>) -> usize {
+        let min_chunck_size = chunck_partitioning.iter()
+            .map(|x| x.0)
+            .min()
+            .expect("panic on calculate min chunck size, fbs deduplicate");
         let mut k = 0;
         let mut chunk_deque: VecDeque<FBCHash> = VecDeque::new();
-        for i in self.chunks.iter() {
-            chunk_deque.push_front(*i.0)
+        for i in self.chunk_ids.iter() {
+            chunk_deque.push_front(*i);
         }
 
-        //println!("{:?}", self.chunk_ids);
-
         while !chunk_deque.is_empty() {
-            //println!("{:?}", self.chunks.keys());
-            k += 1;
-            let chunk_index = chunk_deque.pop_back().unwrap();
-            let mut unchecked_chunk = &vec![];
             if k % 100 == 0 {
                 println!("Checked: {}", chunk_deque.len())
             }
-            let mut chunk_char = 0;
-            if !self.chunks.contains_key(&chunk_index) {
-                continue;
-            };
-            match &self.chunks[&chunk_index] {
-                None => { panic!("Chunk NPE") }
+            k += 1;
+            
+            // get hash
+            let chunk_index = chunk_deque.pop_back().unwrap();
+            
+            // create reference to chunck to cut
+            let unchecked_chunk = match &self.chunks.get(&chunk_index).expect("Chunk NPE") {
                 Sharped(_) => { continue }
-                Solid(chunk) => { unchecked_chunk = chunk }
-            }
+                Solid(chunk) => { chunk }
+            };
+            // move in chunck
+            let mut chunk_char = 0;
             while (chunk_char as i128)
-                < unchecked_chunk.len() as i128 - MAX_CHUNK_SIZE as i128
+                < unchecked_chunk.len() as i128 - min_chunck_size as i128
             {
-                //println!("{}", self.dict_count_size());
-                //println!("{} {} {}", chunk_index, self.chunks.len(), chunk_char);
-                let mut tmp_vec: Vec<u8> = Vec::with_capacity(MAX_CHUNK_SIZE);
+                let mut chunk_hash = 0;
+                let mut dict_rec = None;
 
-                for i in 0..MAX_CHUNK_SIZE {
-                    tmp_vec.push(self.chunks[&chunk_index][chunk_char + i]);
-                }
-
-                let mut k_state = false;
-                let chunk_hash = hash_chunk(&tmp_vec);
-                let mut split_two = false;
-                if dict.contains_key(&chunk_hash) {
-                    let dict_rec = (chunk_hash, dict.get(&chunk_hash).unwrap());
-                    if chunk_char as i128
-                        > unchecked_chunk.len() as i128 - MAX_CHUNK_SIZE as i128
-                    {
-                        k_state = true;
-                        println!("some thing strange!!!(k_state if)");
-                        break;
-                    }
-                    //println!("{} {} {} {} {}", dict_rec.1.get_chunk().len(), chunk_char, self.chunks[&chunk_index].len(), dict_rec.0, chunk_index);
-
-                    if dict_rec.1.get_chunk().len() < unchecked_chunk.len() {
-                        let is_chunk_correct = true;
-                        /*
-                        for char_index in 0..dict_rec.1.get_chunk().len() {
-                            if dict_rec.1.get_chunk()[char_index]
-                                != self.chunks[chunk_index][chunk_char + char_index]
-                            {
-                                is_chunk_correct = false;
-                                break;
-                            }
-                        }
-                        */
-
-                        if is_chunk_correct {
-                            let mut cut_out = 0;
-                            if self.chunks.contains_key(&chunk_hash) {
-                                cut_out = chunk_hash;
-                            } else {
-                                cut_out = self.insert_chunk(dict_rec.1.get_chunk().clone());
-                            }
-                            if chunk_char == 0 {
-                                /*
-                                 * if chunk start from is known
-                                 */
-                                let new_hash = self.insert_chunk(
-                                    self.chunks[&chunk_index][dict_rec.1.get_chunk().len()
-                                        ..unchecked_chunk.len()]
-                                        .to_owned(),
-                                );
-                                chunk_deque.push_front(new_hash);
-                                //self.chunks.remove(&chunk_index);
-                                if chunk_index != cut_out && chunk_index != new_hash {
-                                    self.chunks.remove(&chunk_index);
-                                }
-                                self.replace_all_two(chunk_index, cut_out, new_hash);
-                                chunk_char = 0;
-                                split_two = true;
-                                //break
-                            } else {
-                                /*
-                                 * if is known chunk in midle of chunk
-                                 */
-                                let new_hash_2nd = self.insert_chunk(
-                                    self.chunks[&chunk_index][dict_rec.1.get_size() + chunk_char
-                                        ..unchecked_chunk.len()]
-                                        .to_owned(),
-                                );
-                                let new_hash_1st = self.insert_chunk(
-                                    self.chunks[&chunk_index][0..chunk_char].to_owned(),
-                                );
-                                if chunk_index != cut_out
-                                    && chunk_index != new_hash_2nd
-                                    && chunk_index != new_hash_1st
-                                {
-                                    self.chunks.remove(&chunk_index);
-                                }
-                                chunk_deque.push_front(new_hash_2nd);
-                                self.replace_all_three(
-                                    chunk_index,
-                                    new_hash_1st,
-                                    cut_out,
-                                    new_hash_2nd,
-                                );
-                            }
+                for (size, _) in chunck_partitioning.iter() {
+                    if (chunk_char as i128) < unchecked_chunk.len() as i128 - *size as i128 + 1 {
+                        chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
+                        if dict.contains_key(&chunk_hash) {
+                            // dist record have hash
+                            dict_rec = dict.get(&chunk_hash);
                             break;
                         }
-                    } else {
-                        break;
                     }
                 }
-                if k_state {
-                    //println!("KSTATE");
+
+                if let Some(dict_rec) = dict_rec {
+                    if chunk_char == 0 {
+                        // if big chunk start from is known
+                        
+                        let new_chunck = unchecked_chunk[dict_rec.get_len()..].to_owned();
+                        let new_hash = self.insert_chunk(new_chunck);
+                        
+                        // add new chunck for analize
+                        chunk_deque.push_front(new_hash);
+                        
+                        self.replace_all_two(
+                            chunk_index, 
+                            chunk_hash, 
+                            new_hash);
+                    } else if chunk_char + dict_rec.get_len() + 1 == unchecked_chunk.len() {
+                        // if is known chunk in end of big chunk
+
+                        let new_chunck = unchecked_chunk[..chunk_char].to_owned();
+                        let new_hash = self.insert_chunk(new_chunck);
+                        
+                        // not add chunck for analize
+                        
+                        self.replace_all_two(
+                            chunk_index,
+                            new_hash,
+                            chunk_hash,
+                        );
+                    }
+                    else {
+                        // if is known chunk in midle of big chunk
+                        
+                        // start
+                        let new_chunck_1st = unchecked_chunk[..chunk_char].to_owned();
+                        //end
+                        let new_chunck_2st = unchecked_chunk[chunk_char + dict_rec.get_len()..].to_owned();
+
+                        let new_hash_1st = self.insert_chunk(new_chunck_1st);
+                        let new_hash_2nd = self.insert_chunk(new_chunck_2st);
+                        
+                        // add new chunck for analize
+                        chunk_deque.push_front(new_hash_2nd);
+
+                        self.replace_all_three(
+                            chunk_index,
+                            new_hash_1st,
+                            chunk_hash,
+                            new_hash_2nd,
+                        );
+                    }
+                    
+                    if !self.chunks.contains_key(&chunk_hash) {
+                        let _ = self.insert_chunk(dict_rec.get_chunk());
+                    }
                     break;
-                }
-                if !split_two {
+                } else {
                     chunk_char += 1;
                 }
             }
         }
         println!(
             "{}",
-            self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8
+            self.dict_size() + self.chunk_ids.len() * 8
         );
-        self.dict_count_size() + self.chunk_ids.len() * 8 + self.chunks.len() * 8
+        
+        
+
+        self.dict_size() + self.chunk_ids.len() * 8
     }
+
     fn hash_chunk(tmp_vec: &Vec<u8>) -> u64 {
         let mut hasher = DefaultHasher::new();
         hasher.write(tmp_vec.as_slice());
         hasher.finish()
     }
     // Slicing chunk on 2 different
-    fn replace_all_two(&mut self, to_change: u64, first: u64, second: u64) {
-        let mut temp_vec: Vec<u64> = Vec::with_capacity(self.chunks.len() + 1);
-        for index in 0..self.chunk_ids.len() {
-            if self.chunk_ids[index] == to_change {
-                temp_vec.push(first);
-                temp_vec.push(second);
-            } else {
-                temp_vec.push(self.chunk_ids[index]);
-            }
-        }
-        self.chunk_ids = temp_vec
+    fn replace_all_two(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash) {
+        *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second]);
+
+
     }
 
     // Slicing chunk on 3 different
-    fn replace_all_three(&mut self, to_change: u64, first: u64, second: u64, third: u64) {
-        let mut temp_vec: Vec<u64> = Vec::with_capacity(self.chunks.len() + 2);
-        //println!("{} {} {}", first, second, third);
-
-        for index in 0..self.chunk_ids.len() {
-            if self.chunk_ids[index] == to_change {
-                temp_vec.push(first);
-                temp_vec.push(second);
-                temp_vec.push(third);
-            } else {
-                temp_vec.push(self.chunk_ids[index]);
-            }
-        }
-
-        self.chunk_ids = temp_vec;
-        //println!("{:?}",self.chunk_ids);
+    fn replace_all_three(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash, third: FBCHash) {
+        *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second, third]);
     }
 
     // Optimization Method
     // You can call this method to reduce analyser records with low frequency
     // It will force scrubber to run faster but also will reduce dedup gain
     fn dict_count_size(&self) -> usize {
-        self.chunks.values().fold(0, |acc, x| acc + x.len())
+        self.chunks.values().fold(0, |acc, x| acc + x.len(&self.chunks))
+    }
+
+    // compute size to storage chuncks
+    fn dict_size(&self) -> usize {
+        self.chunks.values().fold(0, |acc, x| {
+            acc + match &x { 
+                FBCChunk::Solid(chunck) => chunck.len(),
+                FBCChunk::Sharped(chuncks) => chuncks.len() * size_of::<FBCHash>(),
+            }
+        })
     }
 
     // FSDedup Chunker
