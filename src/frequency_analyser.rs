@@ -154,7 +154,7 @@ impl FrequencyAnalyser {
     pub fn append_dict(&self, first_stage_chunk: &Vec<u8>) {
         let mut start_index = 1;
         for (size, offset, ) in self.chunck_partitioning.iter() {
-            while start_index < first_stage_chunk.len() - size {
+            while start_index < first_stage_chunk.len() - size + 1 {
                 if FrequencyAnalyser::add_chunk(
                     &first_stage_chunk[start_index..start_index + size], 
                     self.dict.clone()) {

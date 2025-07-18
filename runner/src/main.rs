@@ -104,12 +104,18 @@ fn main() {
                 }
                 str_out.push_str(";");
 
-                match f(name, dt, sizes.clone()) {
-                    Some(res) => {
-                        str_out.push_str(res.to_string().as_str());
-                    }
-                    None => {
-                        str_out.push_str("NOT MATCH");
+                if name.to_string() == "lowinput.txt" &&
+                    sizes.len() > 1 {
+                    str_out.push_str("STACK OVERFLOW");
+                    println!("STACK OVERFLOW\n");
+                } else {
+                    match f(name, dt, sizes.clone()) {
+                        Some(res) => {
+                            str_out.push_str(res.to_string().as_str());
+                        }
+                        None => {
+                            str_out.push_str("NOT MATCH");
+                        }
                     }
                 }
 

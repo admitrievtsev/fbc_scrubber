@@ -146,7 +146,7 @@ impl ChunkerFBC {
                 let mut dict_rec = None;
 
                 for (size, _) in chunck_partitioning.iter() {
-                    if (chunk_char as i128) < unchecked_chunk.len() as i128 - *size as i128 {
+                    if (chunk_char as i128) < unchecked_chunk.len() as i128 - *size as i128 + 1 {
                         chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
                         if dict.contains_key(&chunk_hash) {
                             // dist record have hash
