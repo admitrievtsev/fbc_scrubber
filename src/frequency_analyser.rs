@@ -26,6 +26,9 @@ impl DictRecord {
     pub fn get_chunk(&self) -> Vec<u8> {
         self.chunk.clone()
     }
+    pub fn get_chunk_ref(&self) -> &Vec<u8> {
+        &self.chunk
+    }
     pub fn get_size(&self) -> usize {
         self.size
     }
@@ -55,6 +58,8 @@ impl FrequencyAnalyser {
             chunck_partitioning: vec![(64, 16)],
         }
     }
+
+    /// chunck_partitioning - (size, offset)
     pub fn new_with_distribution(chunck_partitioning: Vec<(usize, usize)>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
@@ -68,7 +73,6 @@ impl FrequencyAnalyser {
             chunck_partitioning: chunck_sizes.into_iter().map(|size| {(size, size / 4)}).collect(),
         }
     }
-
 
     pub fn get_dict(&mut self) -> HashMap<u64, DictRecord> {
         let mut tmp_hmap = HashMap::new();
@@ -151,23 +155,30 @@ impl FrequencyAnalyser {
         });
     }
 
-    pub fn append_dict(&self, first_stage_chunk: &Vec<u8>) {
-        let mut start_index = 1;
+    pub fn append_dict(&self, first_stage_chunk: &[u8]) {
+        let mut index = 0;
+        let mut save_index = 0;
+
         for (size, offset, ) in self.chunck_partitioning.iter() {
-            while start_index < first_stage_chunk.len() - size + 1 {
-                if FrequencyAnalyser::add_chunk(
-                    &first_stage_chunk[start_index..start_index + size], 
-                    self.dict.clone()) {
-                    start_index += offset;
-                } else {
-                    start_index += size;
+            // while index < first_stage_chunk.len() - size + 1 {
+            while index + size < first_stage_chunk.len() + 1 {
+                let res =  FrequencyAnalyser::add_chunk(
+                    &first_stage_chunk[index..index + size], 
+                    self.dict.clone()
+                );
+                if res {
+                    save_index = index;
                 }
-            
+                if index - save_index < *size {
+                    index += offset;
+                } else {
+                    index += size;
+                }
             }
         }
     }
 
-    // return is chunck was inserted to target map 
+    /// return true if chunck was inserted to target map 
     pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<u64, DictRecord>>) -> bool {
         //println!("Add started");
         let str_size = chunk.len();
@@ -194,6 +205,108 @@ impl FrequencyAnalyser {
     }
 }
 
+#[test]
+fn fbc_add_chunck_analizer_test() {
+    let target_map =  Arc::new(DashMap::<u64, DictRecord>::new());
+    let chunk1: &[u8] = &[1, 2, 3];
+    let chunk2: &[u8] = &[3, 4, 5];
+    let chunk3: &[u8] = &[5, 6, 7];
+
+    assert!(FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add not exists chunk");
+    assert!(FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add not exists chunk");
+    assert!(FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add not exists chunk");
+    
+    assert!(!FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add exists chunk");
+    assert!(!FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add exists chunk");
+    assert!(!FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add exists chunk");
+}
+
+#[test]
+fn fbc_append_dict_analizer_test() {
+    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(8, 1)]);
+    
+    let content_1: &[u8] = &[1, 2, 3, 4];
+    analizer.append_dict(content_1);
+
+    let dict = analizer.get_dict();
+    assert_eq!(dict.len(), 0, "Dumb check");
+
+
+    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(4, 1)]);
+    
+    let content_1: &[u8] = &[1, 2, 3, 4];
+    analizer.append_dict(content_1);
+
+    let dict = analizer.get_dict();
+    assert_eq!(dict.len(), 1, "Dict not append");
+    let get_content_1 = &dict[&hash_chunk(content_1)];
+    assert_eq!(get_content_1.chunk, content_1, "Appended chunck and chunck in dict not equal");
+    
+
+    let content_2: &[u8] = &[1, 1, 1, 1, 1];
+    analizer.append_dict(content_2);
+
+    let dict = analizer.get_dict();
+    assert_eq!(dict.len(), 2, "Dict not append");
+    let get_content_2 = &dict[&hash_chunk(&content_2[..4])];
+    assert_eq!(get_content_2.get_chunk(), content_2[..4], "Appended chunck and chunck in dict not equal");
+    assert_eq!(get_content_2.get_occurrence_num(), 2, "Appended chunck occurence num not expected");
+
+
+    /* Check situation
+    has [2, 3, 4]
+
+    Check all three an first found [1, 2, 3] not see that [2 3 4] is exist and not do +3 like in end
+    1 2 3 4 5 1 2 3 4 5 6
+    [   ] . . . . . . .
+    . [   ] . . . . . .
+    . . [   ] . . . . .
+    . . . [   ] . . . .
+    . . . . [   ] . . .
+    . . . . . [   ] . .
+    . . . . . . [   ]
+                  [    ]
+    | x | | | x x x
+    n   n n n                 <- new chuncks
+
+    [1 2 3] 2
+    [2 3 4] 3
+    [3 4 5] 2
+    [4 5 1] 1
+    [5 1 2] 1
+     */
+    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(3, 1)]);
+    
+    let content_1: &[u8] = &[2, 3, 4];
+    analizer.append_dict(content_1);
+
+    let dict = analizer.get_dict();
+    assert_eq!(dict.len(), 1, "Dict not append");
+    let get_content_1 = &dict[&hash_chunk(content_1)];
+    assert_eq!(get_content_1.chunk, content_1, "Appended chunck and chunck in dict not equal");
+    
+
+    let content_2: &[u8] = &[1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
+    let expected_add: &[([u8; 3], u32)] = &[
+        ([1, 2, 3], 2),
+        ([2, 3, 4], 3),
+        ([3, 4, 5], 2),
+        ([4, 5, 1], 1),
+        ([5, 1, 2], 1),
+    ];
+    analizer.append_dict(content_2);
+
+    let dict = analizer.get_dict();
+    assert_eq!(dict.len(), 5, "Not expected dict size");
+    
+    for (chunsk, occ_num) in expected_add {
+        let get_content = &dict[&hash_chunk(chunsk)];
+        assert_eq!(get_content.get_chunk(), chunsk, "Appended chunck and chunck in dict not equal");
+        assert_eq!(get_content.get_occurrence_num(), *occ_num, "Appended chunck occurence num not expected");
+    }
+
+    
+}
 
 impl FrequencyAnalyser {
     /* retunt count unique saved recored */
