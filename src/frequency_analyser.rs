@@ -19,7 +19,7 @@ pub struct DictRecord {
     chunk: Vec<u8>,
     occurrence_num: u32,
     size: usize,
-    hash: u64,
+    hash: FBCHash,
 }
 
 impl DictRecord {
@@ -46,7 +46,7 @@ impl Clone for DictRecord {
 }
 
 pub struct FrequencyAnalyser {
-    pub(crate) dict: Arc<DashMap<u64, DictRecord>>,
+    pub(crate) dict: Arc<DashMap<FBCHash, DictRecord>>,
     /// size, offset
     chunck_partitioning: Vec<(usize, usize)>,
 }
@@ -74,7 +74,7 @@ impl FrequencyAnalyser {
         }
     }
 
-    pub fn get_dict(&mut self) -> HashMap<u64, DictRecord> {
+    pub fn get_dict(&mut self) -> HashMap<FBCHash, DictRecord> {
         let mut tmp_hmap = HashMap::new();
         for i in self.dict.clone().iter() {
             tmp_hmap.insert(i.hash, i.clone());
@@ -179,9 +179,9 @@ impl FrequencyAnalyser {
     }
 
     /// return true if chunck was inserted to target map 
-    pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<u64, DictRecord>>) -> bool {
+    pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<FBCHash, DictRecord>>) -> bool {
         //println!("Add started");
-        let str_size = chunk.len();
+        let size = chunk.len();
         let chunk_hash = hash_chunk(chunk);
         //println!("Ready to check");
         match target_map.get_mut(&chunk_hash) {
@@ -195,7 +195,7 @@ impl FrequencyAnalyser {
                     DictRecord {
                         chunk: chunk.to_vec(),
                         occurrence_num: 1,
-                        size: str_size,
+                        size: size,
                         hash: chunk_hash,
                     },
                 );
@@ -207,18 +207,18 @@ impl FrequencyAnalyser {
 
 #[test]
 fn fbc_add_chunck_analizer_test() {
-    let target_map =  Arc::new(DashMap::<u64, DictRecord>::new());
+    let target_map =  Arc::new(DashMap::<FBCHash, DictRecord>::new());
     let chunk1: &[u8] = &[1, 2, 3];
     let chunk2: &[u8] = &[3, 4, 5];
     let chunk3: &[u8] = &[5, 6, 7];
 
-    assert!(FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add not exists chunk");
-    assert!(FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add not exists chunk");
-    assert!(FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add not exists chunk");
+    assert!(FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add not exists chunk 1");
+    assert!(FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add not exists chunk 2");
+    assert!(FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add not exists chunk 3");
     
-    assert!(!FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add exists chunk");
-    assert!(!FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add exists chunk");
-    assert!(!FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add exists chunk");
+    assert!(!FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add exists chunk 1");
+    assert!(!FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add exists chunk 2");
+    assert!(!FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add exists chunk 3");
 }
 
 #[test]
@@ -417,7 +417,7 @@ impl DictRecord {
     }
 
     pub fn save_to_file(&self, file: &mut fs::File) -> Result<(), io::Error> {
-        file.write(u64::to_be_bytes(self.hash).as_slice())?;
+        file.write(FBCHash::to_be_bytes(self.hash).as_slice())?;
         file.write(u32::to_be_bytes(self.occurrence_num).as_slice())?;
         file.write(usize::to_be_bytes(self.size).as_slice())?;
         file.write(self.chunk.as_slice())?;
@@ -429,7 +429,7 @@ impl DictRecord {
         let mut result = DictRecord::default();
 
         /* indexes of data in buffer */
-        const HASH: usize = size_of::<u64>();
+        const HASH: usize = size_of::<FBCHash>();
         const OCC_NUM: usize = size_of::<u32>() + HASH;
         const SIZE: usize = size_of::<usize>() + OCC_NUM;
         /* create buffer */
@@ -437,7 +437,7 @@ impl DictRecord {
         /* read buffer */
         file.read(&mut buffer)?;
         /* read data from buffer by indexes */
-        result.hash = u64::from_be_bytes(buffer[0..HASH].try_into().unwrap());
+        result.hash = FBCHash::from_be_bytes(buffer[0..HASH].try_into().unwrap());
         result.occurrence_num = u32::from_be_bytes(buffer[HASH..OCC_NUM].try_into().unwrap());
         result.size = usize::from_be_bytes(buffer[OCC_NUM..SIZE].try_into().unwrap());
 

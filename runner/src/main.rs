@@ -31,10 +31,10 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
     
     let mut i = 0;
     while i < contents.len() - dt {
-        chunker.add_cdc_chunk(&contents[i..i + dt].to_vec());
+        chunker.add_cdc_chunk(&contents[i..i + dt]);
         i += dt;
     }
-    chunker.add_cdc_chunk(&contents[i..contents.len()].to_vec());
+    chunker.add_cdc_chunk(&contents[i..contents.len()]);
     let a = analyser.get_dict();
 
     // for (k, v) in a.iter() {
@@ -94,6 +94,11 @@ fn main() {
     for name in names {
         for dt in dts {
             for sizes in all_sizes.iter() {
+                print!("name: {}\ndt: {}\nsizes: ", name, dt);
+                for it in sizes {
+                    print!("{it} ");
+                }
+                print!("\n\n");
                 str_out.push_str(name);
                 str_out.push_str(";");
                 str_out.push_str(dt.to_string().as_str());

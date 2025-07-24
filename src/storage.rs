@@ -3,13 +3,15 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;
 
+use crate::fbc_chunker::FBCHash;
+
 #[derive(Hash, PartialEq, Eq, Clone)]
 pub struct FBCKey {
-    key: u64,
+    key: FBCHash,
     state: bool,
 }
 impl FBCKey {
-    pub fn new(key: u64, state: bool) -> FBCKey {
+    pub fn new(key: FBCHash, state: bool) -> FBCKey {
         FBCKey { key, state }
     }
 }

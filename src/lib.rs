@@ -5,7 +5,7 @@ pub mod storage;
 use std::cell::RefCell;
 use std::thread;
 
-use crate::fbc_chunker::ChunkerFBC;
+use crate::fbc_chunker::{ChunkerFBC, FBCHash};
 use crate::frequency_analyser::{DictRecord, FrequencyAnalyser};
 use crate::storage::{FBCKey, FBCMap};
 use chunkfs::{
@@ -14,7 +14,6 @@ use chunkfs::{
 use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex};
-pub use fbc_chunker::FBCHash;
 
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;
@@ -140,7 +139,15 @@ where
 
 //Hashcode that uses chunker to put it into target_map
 fn hash_chunk(data_ptr: &[u8]) -> FBCHash {
+    // let mut hasher = DefaultHasher::new();
+    // Hash::hash_slice(data_ptr, &mut hasher);
+    // hasher.finish();
+
     let mut hasher = DefaultHasher::new();
-    Hash::hash_slice(data_ptr, &mut hasher);
-    hasher.finish()
+    let delimer = data_ptr.len() / 2;
+    Hash::hash_slice(&data_ptr[..delimer], &mut hasher);
+    let hash1 = hasher.finish() as FBCHash;
+    Hash::hash_slice(&data_ptr[delimer..], &mut hasher);
+    let hash2 = hasher.finish() as FBCHash;
+    hash1 << 64 | hash2
 }
