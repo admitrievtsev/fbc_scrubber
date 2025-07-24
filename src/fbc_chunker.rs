@@ -88,43 +88,69 @@ impl ChunkerFBC {
     }
 
      */
-    fn reconstruct_chunk_from_hash(&self, hash: &FBCHash) -> Vec<u8> {
+    fn reconstruct_chunk_from_hash(&self, hash: &FBCHash, mut depth: u32) -> Vec<u8> {
         let mut main_chunk: Vec<u8> = vec![];
         match self.chunks.get(&hash).expect("Chunk NPE") {
-            Solid(chunk) => { main_chunk.append(&mut chunk.clone()) }
-            Sharped(chunks) => { main_chunk.append(&mut self.reconstruct_chunk(&chunks)) }
+            Solid(chunk) => { 
+                main_chunk.append(&mut chunk.clone()) 
+            },
+            Sharped(chunks) => { 
+                // print!("{depth}, {} {}", chunks.len(), hash);
+                // for it in chunks.iter() {
+                //     print!(" {it}");
+                // }
+                // println!();
+
+                depth += 1;
+                main_chunk.append(&mut self.reconstruct_chunk(&chunks, depth)) 
+            }
         }
         main_chunk
     }
 
-    fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>) -> Vec<u8> {
+    fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>, depth: u32) -> Vec<u8> {
         let mut main_chunk: Vec<u8> = vec![];
+        
         for hash in hashes {
-            main_chunk.append(&mut Self::reconstruct_chunk_from_hash(self, hash));
+            main_chunk.append(&mut Self::reconstruct_chunk_from_hash(self, hash, depth));
         }
         main_chunk
     }
     //Method that write text dedup out || DEBUG ONLY
     pub fn reduplicate(&self, file_out: &str) -> usize {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .open(file_out).expect("Unable to write the file");
-        let mut all_len = 0;
-        for id in self.chunk_ids.iter() {
-            let out_string = Self::to_str(Self::reconstruct_chunk_from_hash(self, id));
-            all_len += out_string.len();
-            file.write(out_string.as_bytes()).expect("Unable to write the file");
-        }
-        println!("{}", all_len);
-        all_len
-        // let mut string_out = String::new();
+        // let mut file = fs::OpenOptions::new()
+        //     .create(true)
+        //     .write(true)
+        //     .open(file_out)
+        //     .expect("Unable to write the file");
+        // let mut all_len = 0;
         // for id in self.chunk_ids.iter() {
-        //     string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id)));
+        //     let out_string = Self::to_str(Self::reconstruct_chunk_from_hash(self, id, 0));
+        //     all_len += out_string.len();
+        //     file.write(out_string.as_bytes()).expect("Unable to write the file");
         // }
-        // //println!("PRINT TO FILE");
-        // println!("{}", string_out.len());
-        // fs::write(file_out, &string_out).expect("Unable to write the file");
-        // string_out.len()
+        // println!("{}", all_len);
+        // all_len
+        let mut string_out = String::new();
+        for id in self.chunk_ids.iter() {
+            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id, 0)));
+        }
+        //println!("PRINT TO FILE");
+        println!("{}", string_out.len());
+        fs::write(file_out, &string_out).expect("Unable to write the file");
+        string_out.len()
+    }
+    pub fn reduplicate_by_chuncks(&self, file_out: &str) -> usize {
+        let mut string_out = String::new();
+        for id in self.chunk_ids.iter() {
+            string_out.push_str("{\n");
+            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id, 0)));
+            string_out.push_str("\n}\n");
+        }
+        //println!("PRINT TO FILE");
+        println!("{}", string_out.len());
+        fs::write(file_out, &string_out).expect("Unable to write the file");
+        string_out.len()
     }
     // This method contains FBC chunker implementation
     /// chunck_partitioning - size, offset
@@ -150,6 +176,11 @@ impl ChunkerFBC {
             // get hash
             let chunk_index = chunk_deque.pop_back().unwrap();
             
+            // if current chunck already exist in dict
+            if dict.contains_key(&chunk_index) {
+                break;
+            }
+
             // create reference to chunck to cut
             let unchecked_chunk = match &self.chunks.get(&chunk_index).expect("Chunk NPE") {
                 Sharped(_) => { continue }
@@ -164,7 +195,7 @@ impl ChunkerFBC {
                 let mut dict_rec = None;
 
                 for (size, _) in chunck_partitioning.iter() {
-                    if (chunk_char as i128) < unchecked_chunk.len() as i128 - *size as i128 + 1 {
+                    if (chunk_char as i128) + (*size as i128) < unchecked_chunk.len() as i128 + 1 {
                         chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
                         if dict.contains_key(&chunk_hash) {
                             // dist record have hash
@@ -178,17 +209,18 @@ impl ChunkerFBC {
                     if chunk_char == 0 {
                         // if big chunk start from is known
                         
+                        // let clone = unchecked_chunk.clone();
                         let new_chunck = unchecked_chunk[dict_rec.get_len()..].to_vec();
-                        let new_hash = self.insert_chunk_vec(new_chunck);
+                        let new_hash = self.insert_chunk_vec(new_chunck.clone());
                         
                         // add new chunck for analize
                         chunk_deque.push_front(new_hash);
-                        
+                       
                         self.replace_all_two(
                             chunk_index, 
                             chunk_hash, 
                             new_hash);
-                    } else if chunk_char + dict_rec.get_len() + 1 == unchecked_chunk.len() {
+                    } else if chunk_char + dict_rec.get_len() == unchecked_chunk.len() {
                         // if is known chunk in end of big chunk
 
                         let new_chunck = unchecked_chunk[..chunk_char].to_vec();
@@ -251,8 +283,6 @@ impl ChunkerFBC {
     // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash) {
         *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second]);
-
-
     }
 
     // Slicing chunk on 3 different
@@ -271,8 +301,10 @@ impl ChunkerFBC {
     fn dict_size(&self) -> usize {
         self.chunks.values().fold(0, |acc, x| {
             acc + match &x { 
-                FBCChunk::Solid(chunck) => chunck.len(),
-                FBCChunk::Sharped(chuncks) => chuncks.len() * size_of::<FBCHash>(),
+                FBCChunk::Solid(chunck) => chunck.len() + size_of::<FBCHash>(),
+                                                     // len of chunck + self hash
+                FBCChunk::Sharped(chuncks) => chuncks.len() * size_of::<FBCHash>() + size_of::<usize>() + size_of::<FBCHash>(),
+                                                                                                 // len of chuncks    self hash
             }
         })
     }

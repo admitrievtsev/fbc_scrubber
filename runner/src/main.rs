@@ -53,9 +53,6 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
     for it in analize_sizes {
         print!("{it} ");
     }
-    println!("");
-    println!("");
-    println!("");
     
     if fs::read(path)
             .expect("Should have been able to read lowinput")
@@ -64,8 +61,12 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
             .expect("Should have been able to read out file")
     {
         let mut name = String::new();
-        println!("NOT MATCH");
+        println!("");
+        println!("NOT MATCH {} {}", fs::metadata(path).unwrap().len(), fs::read("out.txt").unwrap().len());
+        chunker.reduplicate_by_chuncks("_out.txt");
         std::io::stdin().read_line(&mut name);
+        println!("");
+        println!("");
         None
     } else {
         Some(rededup as f64 / dedup as f64)
@@ -81,13 +82,20 @@ fn main() {
     ];
     let dts = [
         128 * 2, 128 * 3, 128 * 4, 128 * 5, 128 * 6, 128 * 7, 128 * 8
+        // 0        1       2         3         4         5       6
     ];
 
     let all_sizes = [
         vec![32], vec![64], vec![128], vec![256], 
+        //    0         1          2          3
         vec![64, 32], vec![128, 64, 32], vec![128, 64], vec![256, 128, 64], vec![256, 128],
+        //      4                5               6                 7               8
         vec![256, 64], vec![128, 32]
+        //      9             10
     ];
+
+    // f(names[0], dts[1], all_sizes[7].clone());
+    // return;
 
     let mut str_out = String::from_str("file_name;dt;sizes;res\n").unwrap();
 
@@ -109,11 +117,12 @@ fn main() {
                 }
                 str_out.push_str(";");
 
-                if name.to_string() == "lowinput.txt" &&
-                    sizes.len() > 1 {
-                    str_out.push_str("STACK OVERFLOW");
-                    println!("STACK OVERFLOW\n");
-                } else {
+                // if name.to_string() == "lowinput.txt" &&
+                //     sizes.len() > 1 {
+                //     str_out.push_str("STACK OVERFLOW");
+                //     println!("STACK OVERFLOW\n");
+                // } else {
+                // }
                     match f(name, dt, sizes.clone()) {
                         Some(res) => {
                             str_out.push_str(res.to_string().as_str());
@@ -122,7 +131,6 @@ fn main() {
                             str_out.push_str("NOT MATCH");
                         }
                     }
-                }
 
                 str_out.push_str("\n");
             }

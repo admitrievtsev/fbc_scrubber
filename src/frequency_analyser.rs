@@ -184,6 +184,7 @@ impl FrequencyAnalyser {
         let size = chunk.len();
         let chunk_hash = hash_chunk(chunk);
         //println!("Ready to check");
+        // print!("{{\n{}\n}}\n", String::from_utf8(chunk.to_vec()).unwrap());
         match target_map.get_mut(&chunk_hash) {
             Some(mut x) => {
                 x.occurrence_num += 1;
