@@ -20,7 +20,7 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
     Ok(())
 }
 
-fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
+fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usize)> {
     let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes.clone());
     let mut chunker = ChunkerFBC::default();
     let path_string = "../test_files_input/".to_string() + name;
@@ -45,10 +45,12 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
     // }
 
     let dedup = chunker.fbc_dedup(&a, analyser.get_chunck_partitioning());
-
     let rededup = chunker.reduplicate("out.txt");
+    let pure_size = chunker.get_size_pure_chuncks();
+    let count_chuncks = chunker.get_count_chuncks();
     
     println!("dedup: {}", rededup as f64 / dedup as f64);
+    println!("dedup: {}", rededup as f64 / pure_size as f64);
     print!("name: {}\ndt: {}\nsizes: ", name, dt);
     for it in analize_sizes {
         print!("{it} ");
@@ -69,7 +71,7 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<f64> {
         println!("");
         None
     } else {
-        Some(rededup as f64 / dedup as f64)
+        Some((rededup as f64 / dedup as f64, rededup as f64 / pure_size as f64, count_chuncks))
     }
 
 }
@@ -97,7 +99,7 @@ fn main() {
     // f(names[0], dts[1], all_sizes[7].clone());
     // return;
 
-    let mut str_out = String::from_str("file_name;dt;sizes;res\n").unwrap();
+    let mut str_out = String::from_str("file_name\tdt\tsizes\tdedup_coef\tpure_size_ratio\tcount_chunks\n").unwrap();
 
     for name in names {
         for dt in dts {
@@ -108,14 +110,14 @@ fn main() {
                 }
                 print!("\n\n");
                 str_out.push_str(name);
-                str_out.push_str(";");
+                str_out.push_str("\t");
                 str_out.push_str(dt.to_string().as_str());
-                str_out.push_str(";");
+                str_out.push_str("\t");
                 for s in sizes {
                     str_out.push_str(s.to_string().as_str());
                     str_out.push_str(" ");
                 }
-                str_out.push_str(";");
+                str_out.push_str("\t");
 
                 // if name.to_string() == "lowinput.txt" &&
                 //     sizes.len() > 1 {
@@ -125,7 +127,11 @@ fn main() {
                 // }
                     match f(name, dt, sizes.clone()) {
                         Some(res) => {
-                            str_out.push_str(res.to_string().as_str());
+                            str_out.push_str(res.0.to_string().as_str());
+                            str_out.push_str("\t");
+                            str_out.push_str(res.1.to_string().as_str());
+                            str_out.push_str("\t");
+                            str_out.push_str(res.2.to_string().as_str());
                         }
                         None => {
                             str_out.push_str("NOT MATCH");

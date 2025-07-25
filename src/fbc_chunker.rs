@@ -275,6 +275,19 @@ impl ChunkerFBC {
         self.dict_size() + self.chunk_ids.len() * 8
     }
 
+    /// return size of solid chuncks
+    pub fn get_size_pure_chuncks(&self) -> usize {
+        let mut size = 0;
+        for it in &self.chunks {
+            if let FBCChunk::Solid(chunck) = &it.1 {
+                size += chunck.len();
+            }
+        }
+        size
+    }
+    pub fn get_count_chuncks(&self) -> usize {
+        self.chunks.len()
+    }
     fn hash_chunk(tmp_vec: &Vec<u8>) -> u64 {
         let mut hasher = DefaultHasher::new();
         hasher.write(tmp_vec.as_slice());
