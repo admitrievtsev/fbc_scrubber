@@ -48,29 +48,29 @@ impl Clone for DictRecord {
 pub struct FrequencyAnalyser {
     pub(crate) dict: Arc<DashMap<FBCHash, DictRecord>>,
     /// size, offset
-    chunck_partitioning: Vec<(usize, usize)>,
+    chunk_partitioning: Vec<(usize, usize)>,
 }
 
 impl FrequencyAnalyser {
     pub fn new() -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
-            chunck_partitioning: vec![(64, 16)],
+            chunk_partitioning: vec![(64, 16)],
         }
     }
 
-    /// chunck_partitioning - (size, offset)
-    pub fn new_with_distribution(chunck_partitioning: Vec<(usize, usize)>) -> Self {
+    /// chunk_partitioning - (size, offset)
+    pub fn new_with_distribution(chunk_partitioning: Vec<(usize, usize)>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
-            chunck_partitioning,
+            chunk_partitioning: chunk_partitioning,
         }
     }
 
-    pub fn new_with_sizes(chunck_sizes: Vec<usize>) -> Self {
+    pub fn new_with_sizes(chunk_sizes: Vec<usize>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
-            chunck_partitioning: chunck_sizes.into_iter().map(|size| {(size, size / 4)}).collect(),
+            chunk_partitioning: chunk_sizes.into_iter().map(|size| {(size, size / 4)}).collect(),
         }
     }
 
@@ -82,8 +82,8 @@ impl FrequencyAnalyser {
         tmp_hmap
     }
 
-    pub fn get_chunck_partitioning(&self) -> &Vec<(usize, usize)> {
-        &self.chunck_partitioning
+    pub fn get_chunk_partitioning(&self) -> &Vec<(usize, usize)> {
+        &self.chunk_partitioning
     }
 
     /*
@@ -159,7 +159,7 @@ impl FrequencyAnalyser {
         let mut index = 0;
         let mut save_index = 0;
 
-        for (size, offset, ) in self.chunck_partitioning.iter() {
+        for (size, offset, ) in self.chunk_partitioning.iter() {
             // while index < first_stage_chunk.len() - size + 1 {
             while index + size < first_stage_chunk.len() + 1 {
                 let res =  FrequencyAnalyser::add_chunk(
@@ -178,7 +178,7 @@ impl FrequencyAnalyser {
         }
     }
 
-    /// return true if chunck was inserted to target map 
+    /// return true if chunk was inserted to target map
     pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<FBCHash, DictRecord>>) -> bool {
         //println!("Add started");
         let size = chunk.len();
@@ -207,7 +207,7 @@ impl FrequencyAnalyser {
 }
 
 #[test]
-fn fbc_add_chunck_analizer_test() {
+fn fbc_add_chunk_analizer_test() {
     let target_map =  Arc::new(DashMap::<FBCHash, DictRecord>::new());
     let chunk1: &[u8] = &[1, 2, 3];
     let chunk2: &[u8] = &[3, 4, 5];
@@ -241,7 +241,7 @@ fn fbc_append_dict_analizer_test() {
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
     let get_content_1 = &dict[&hash_chunk(content_1)];
-    assert_eq!(get_content_1.chunk, content_1, "Appended chunck and chunck in dict not equal");
+    assert_eq!(get_content_1.chunk, content_1, "Appended chunk and chunk in dict not equal");
     
 
     let content_2: &[u8] = &[1, 1, 1, 1, 1];
@@ -250,8 +250,8 @@ fn fbc_append_dict_analizer_test() {
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 2, "Dict not append");
     let get_content_2 = &dict[&hash_chunk(&content_2[..4])];
-    assert_eq!(get_content_2.get_chunk(), content_2[..4], "Appended chunck and chunck in dict not equal");
-    assert_eq!(get_content_2.get_occurrence_num(), 2, "Appended chunck occurence num not expected");
+    assert_eq!(get_content_2.get_chunk(), content_2[..4], "Appended chunk and chunk in dict not equal");
+    assert_eq!(get_content_2.get_occurrence_num(), 2, "Appended chunk occurence num not expected");
 
 
     /* Check situation
@@ -268,7 +268,7 @@ fn fbc_append_dict_analizer_test() {
     . . . . . . [   ]
                   [    ]
     | x | | | x x x
-    n   n n n                 <- new chuncks
+    n   n n n                 <- new chunks
 
     [1 2 3] 2
     [2 3 4] 3
@@ -284,7 +284,7 @@ fn fbc_append_dict_analizer_test() {
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
     let get_content_1 = &dict[&hash_chunk(content_1)];
-    assert_eq!(get_content_1.chunk, content_1, "Appended chunck and chunck in dict not equal");
+    assert_eq!(get_content_1.chunk, content_1, "Appended chunk and chunk in dict not equal");
     
 
     let content_2: &[u8] = &[1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
@@ -302,8 +302,8 @@ fn fbc_append_dict_analizer_test() {
     
     for (chunsk, occ_num) in expected_add {
         let get_content = &dict[&hash_chunk(chunsk)];
-        assert_eq!(get_content.get_chunk(), chunsk, "Appended chunck and chunck in dict not equal");
-        assert_eq!(get_content.get_occurrence_num(), *occ_num, "Appended chunck occurence num not expected");
+        assert_eq!(get_content.get_chunk(), chunsk, "Appended chunk and chunk in dict not equal");
+        assert_eq!(get_content.get_occurrence_num(), *occ_num, "Appended chunk occurence num not expected");
     }
 
     
@@ -409,7 +409,7 @@ impl FrequencyAnalyser {
 }
 
 impl DictRecord {
-    pub fn print_with_chunck(&self) {
+    pub fn print_with_chunk(&self) {
         Self::print(self);
         println!("{:?}", self.chunk);
     }
