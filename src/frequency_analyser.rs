@@ -1,20 +1,18 @@
-use std::collections::{self, HashMap, BTreeSet};
-use std::sync::{Arc, Mutex, MutexGuard};
-use dashmap::{DashMap, TryReserveError};
+use dashmap::DashMap;
+use std::collections::{self, BTreeSet, HashMap};
+use std::sync::Arc;
 //Struct that provide occurrences counting during analysis of data
 pub const MAX_CHUNK_SIZE: usize = 128;
 const MIN_CHUNK_SIZE: usize = 127;
-use std::hash::{DefaultHasher, Hasher};
-use std::{default, mem, thread};
-use std::io::{self, Read, Seek, Write};
-use std::fs;
-use std::path;
-use crate::{hash_chunk, THREADS_COUNT};
 use crate::FBCHash;
+use crate::{hash_chunk, THREADS_COUNT};
+use std::fs;
+use std::hash::Hasher;
+use std::io::{self, Read, Seek, Write};
+use std::path;
+use std::thread;
 
-
-#[derive(Default)]
-#[derive(PartialEq)]
+#[derive(Default, PartialEq)]
 pub struct DictRecord {
     chunk: Vec<u8>,
     occurrence_num: u32,
@@ -33,7 +31,7 @@ impl DictRecord {
         self.size
     }
     pub fn get_len(&self) -> usize {
-        Self::get_size(&self)
+        Self::get_size(self)
     }
     pub fn get_occurrence_num(&self) -> u32 {
         self.occurrence_num
@@ -41,7 +39,12 @@ impl DictRecord {
 }
 impl Clone for DictRecord {
     fn clone(&self) -> Self {
-        DictRecord { chunk: self.chunk.clone(), occurrence_num: self.occurrence_num, size: self.size, hash: self.hash }
+        DictRecord {
+            chunk: self.chunk.clone(),
+            occurrence_num: self.occurrence_num,
+            size: self.size,
+            hash: self.hash,
+        }
     }
 }
 
@@ -49,6 +52,12 @@ pub struct FrequencyAnalyser {
     pub(crate) dict: Arc<DashMap<FBCHash, DictRecord>>,
     /// size, offset
     chunk_partitioning: Vec<(usize, usize)>,
+}
+
+impl Default for FrequencyAnalyser {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl FrequencyAnalyser {
@@ -63,14 +72,17 @@ impl FrequencyAnalyser {
     pub fn new_with_distribution(chunk_partitioning: Vec<(usize, usize)>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
-            chunk_partitioning: chunk_partitioning,
+            chunk_partitioning,
         }
     }
 
     pub fn new_with_sizes(chunk_sizes: Vec<usize>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
-            chunk_partitioning: chunk_sizes.into_iter().map(|size| {(size, size / 4)}).collect(),
+            chunk_partitioning: chunk_sizes
+                .into_iter()
+                .map(|size| (size, size / 4))
+                .collect(),
         }
     }
 
@@ -124,7 +136,9 @@ impl FrequencyAnalyser {
         }
     }
     pub fn reduce_low_occur(&mut self, occurrence: u32) {
-        self.dict.clone().retain(|_, v| v.occurrence_num >= occurrence);
+        self.dict
+            .clone()
+            .retain(|_, v| v.occurrence_num >= occurrence);
         self.dict.shrink_to_fit();
         println!("REDUCED")
     }
@@ -135,21 +149,17 @@ impl FrequencyAnalyser {
             if i.occurrence_num >= occurrence {
                 dups += 1;
             }
-        };
+        }
         dups
     }
 
     pub fn analyse_pack(&self, first_stage_chunks: [Option<&Vec<u8>>; THREADS_COUNT]) {
         thread::scope(|s| {
             for i in first_stage_chunks.iter() {
-                match *i {
-                    Some(chunk) => {
-                        s.spawn(move ||
-                            {
-                                FrequencyAnalyser::append_dict(&self, chunk);
-                            });
-                    }
-                    _ => {}
+                if let Some(chunk) = *i {
+                    s.spawn(move || {
+                        FrequencyAnalyser::append_dict(self, chunk);
+                    });
                 }
             }
         });
@@ -159,12 +169,12 @@ impl FrequencyAnalyser {
         let mut index = 0;
         let mut save_index = 0;
 
-        for (size, offset, ) in self.chunk_partitioning.iter() {
+        for (size, offset) in self.chunk_partitioning.iter() {
             // while index < first_stage_chunk.len() - size + 1 {
             while index + size < first_stage_chunk.len() + 1 {
-                let res =  FrequencyAnalyser::add_chunk(
-                    &first_stage_chunk[index..index + size], 
-                    self.dict.clone()
+                let res = FrequencyAnalyser::add_chunk(
+                    &first_stage_chunk[index..index + size],
+                    self.dict.clone(),
                 );
                 if res {
                     save_index = index;
@@ -189,14 +199,14 @@ impl FrequencyAnalyser {
             Some(mut x) => {
                 x.occurrence_num += 1;
                 false // size
-            },
+            }
             None => {
                 target_map.insert(
                     chunk_hash,
                     DictRecord {
                         chunk: chunk.to_vec(),
                         occurrence_num: 1,
-                        size: size,
+                        size,
                         hash: chunk_hash,
                     },
                 );
@@ -208,41 +218,60 @@ impl FrequencyAnalyser {
 
 #[test]
 fn fbc_add_chunk_analizer_test() {
-    let target_map =  Arc::new(DashMap::<FBCHash, DictRecord>::new());
+    let target_map = Arc::new(DashMap::<FBCHash, DictRecord>::new());
     let chunk1: &[u8] = &[1, 2, 3];
     let chunk2: &[u8] = &[3, 4, 5];
     let chunk3: &[u8] = &[5, 6, 7];
 
-    assert!(FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add not exists chunk 1");
-    assert!(FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add not exists chunk 2");
-    assert!(FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add not exists chunk 3");
-    
-    assert!(!FrequencyAnalyser::add_chunk(chunk1, target_map.clone()), "Add exists chunk 1");
-    assert!(!FrequencyAnalyser::add_chunk(chunk2, target_map.clone()), "Add exists chunk 2");
-    assert!(!FrequencyAnalyser::add_chunk(chunk3, target_map.clone()), "Add exists chunk 3");
+    assert!(
+        FrequencyAnalyser::add_chunk(chunk1, target_map.clone()),
+        "Add not exists chunk 1"
+    );
+    assert!(
+        FrequencyAnalyser::add_chunk(chunk2, target_map.clone()),
+        "Add not exists chunk 2"
+    );
+    assert!(
+        FrequencyAnalyser::add_chunk(chunk3, target_map.clone()),
+        "Add not exists chunk 3"
+    );
+
+    assert!(
+        !FrequencyAnalyser::add_chunk(chunk1, target_map.clone()),
+        "Add exists chunk 1"
+    );
+    assert!(
+        !FrequencyAnalyser::add_chunk(chunk2, target_map.clone()),
+        "Add exists chunk 2"
+    );
+    assert!(
+        !FrequencyAnalyser::add_chunk(chunk3, target_map.clone()),
+        "Add exists chunk 3"
+    );
 }
 
 #[test]
 fn fbc_append_dict_analizer_test() {
     let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(8, 1)]);
-    
+
     let content_1: &[u8] = &[1, 2, 3, 4];
     analizer.append_dict(content_1);
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 0, "Dumb check");
 
-
     let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(4, 1)]);
-    
+
     let content_1: &[u8] = &[1, 2, 3, 4];
     analizer.append_dict(content_1);
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
     let get_content_1 = &dict[&hash_chunk(content_1)];
-    assert_eq!(get_content_1.chunk, content_1, "Appended chunk and chunk in dict not equal");
-    
+    assert_eq!(
+        get_content_1.chunk, content_1,
+        "Appended chunk and chunk in dict not equal"
+    );
 
     let content_2: &[u8] = &[1, 1, 1, 1, 1];
     analizer.append_dict(content_2);
@@ -250,9 +279,16 @@ fn fbc_append_dict_analizer_test() {
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 2, "Dict not append");
     let get_content_2 = &dict[&hash_chunk(&content_2[..4])];
-    assert_eq!(get_content_2.get_chunk(), content_2[..4], "Appended chunk and chunk in dict not equal");
-    assert_eq!(get_content_2.get_occurrence_num(), 2, "Appended chunk occurence num not expected");
-
+    assert_eq!(
+        get_content_2.get_chunk(),
+        content_2[..4],
+        "Appended chunk and chunk in dict not equal"
+    );
+    assert_eq!(
+        get_content_2.get_occurrence_num(),
+        2,
+        "Appended chunk occurence num not expected"
+    );
 
     /* Check situation
     has [2, 3, 4]
@@ -277,15 +313,17 @@ fn fbc_append_dict_analizer_test() {
     [5 1 2] 1
      */
     let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(3, 1)]);
-    
+
     let content_1: &[u8] = &[2, 3, 4];
     analizer.append_dict(content_1);
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
     let get_content_1 = &dict[&hash_chunk(content_1)];
-    assert_eq!(get_content_1.chunk, content_1, "Appended chunk and chunk in dict not equal");
-    
+    assert_eq!(
+        get_content_1.chunk, content_1,
+        "Appended chunk and chunk in dict not equal"
+    );
 
     let content_2: &[u8] = &[1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 6];
     let expected_add: &[([u8; 3], u32)] = &[
@@ -299,14 +337,20 @@ fn fbc_append_dict_analizer_test() {
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 5, "Not expected dict size");
-    
+
     for (chunsk, occ_num) in expected_add {
         let get_content = &dict[&hash_chunk(chunsk)];
-        assert_eq!(get_content.get_chunk(), chunsk, "Appended chunk and chunk in dict not equal");
-        assert_eq!(get_content.get_occurrence_num(), *occ_num, "Appended chunk occurence num not expected");
+        assert_eq!(
+            get_content.get_chunk(),
+            chunsk,
+            "Appended chunk and chunk in dict not equal"
+        );
+        assert_eq!(
+            get_content.get_occurrence_num(),
+            *occ_num,
+            "Appended chunk occurence num not expected"
+        );
     }
-
-    
 }
 
 impl FrequencyAnalyser {
@@ -322,38 +366,38 @@ impl FrequencyAnalyser {
             it.save_to_file(&mut file)?;
         }
 
-        Ok((self.dict.len()))
+        Ok(self.dict.len())
     }
 
     pub fn load_from_file(path: &path::Path) -> Result<Self, io::Error> {
         /* create file, map */
         let mut file = fs::File::open(path)?;
         let mut analyser = FrequencyAnalyser::new();
-        
+
         let count_records = Self::load_count_records(&mut file)?;
         /* resize map */
         let err = Arc::get_mut(&mut analyser.dict)
             .unwrap()
             .try_reserve(count_records);
-        
+
         /* return if error */
-        if let Err(_) = err {
-            return Err(io::Error::new(io::ErrorKind::Other, "error reserve memory!"));
+        if err.is_err() {
+            return Err(io::Error::other("error reserve memory!"));
         }
-        
+
         /* read records */
         for _i in 0..count_records {
             let recored = DictRecord::load_from_file(&mut file)?;
             analyser.dict.insert(recored.hash, recored);
         }
-        
+
         Ok(analyser)
     }
 
     /* read count of records in file */
     fn load_count_records(file: &mut fs::File) -> Result<usize, io::Error> {
         const SIZE: usize = size_of::<usize>();
-        let mut buffer =  [0; SIZE];
+        let mut buffer = [0; SIZE];
         /* read buffer */
         file.read(&mut buffer)?;
         /* read count of records from buffer */
@@ -376,11 +420,8 @@ impl FrequencyAnalyser {
     }
 
     /* return count unique saved records */
-    pub fn update(path: &path::Path, new_records: &[DictRecord]) ->  Result<usize, io::Error> {
-        let mut file = fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)?;
+    pub fn update(path: &path::Path, new_records: &[DictRecord]) -> Result<usize, io::Error> {
+        let mut file = fs::OpenOptions::new().read(true).write(true).open(path)?;
         let existed_hashes = Self::load_hashes(&mut file)?;
         let mut unique_records_indexes = Vec::new();
 
@@ -403,7 +444,7 @@ impl FrequencyAnalyser {
         for i in unique_records_indexes.iter() {
             new_records.get(*i).unwrap().save_to_file(&mut file)?;
         }
-        
+
         Ok(unique_records_indexes.len())
     }
 }
@@ -434,7 +475,7 @@ impl DictRecord {
         const OCC_NUM: usize = size_of::<u32>() + HASH;
         const SIZE: usize = size_of::<usize>() + OCC_NUM;
         /* create buffer */
-        let mut buffer =  [0; SIZE];
+        let mut buffer = [0; SIZE];
         /* read buffer */
         file.read(&mut buffer)?;
         /* read data from buffer by indexes */
@@ -444,7 +485,7 @@ impl DictRecord {
 
         Ok(result)
     }
-    
+
     pub fn load_from_file(file: &mut fs::File) -> Result<Self, io::Error> {
         let mut result = Self::load_with_out_chunk(file)?;
 
@@ -460,20 +501,20 @@ impl DictRecord {
 
 #[test]
 fn fbc_save_load_record_test() {
-    let save_record = DictRecord { 
-        chunk: vec![0; 12], 
-        occurrence_num: 3, 
+    let save_record = DictRecord {
+        chunk: vec![0; 12],
+        occurrence_num: 3,
         size: 12,
-        hash: 1234 
+        hash: 1234,
     };
     let file = path::Path::new("./record_save.txt");
-    save_record.save_to_file(
-            &mut fs::File::create(file).expect("file create fail")
-        ).expect("save record fail");
+    save_record
+        .save_to_file(&mut fs::File::create(file).expect("file create fail"))
+        .expect("save record fail");
 
-    let load_record = DictRecord::load_from_file(
-            &mut fs::File::open(file).expect("file open fail")
-        ).expect("load record fail");
+    let load_record =
+        DictRecord::load_from_file(&mut fs::File::open(file).expect("file open fail"))
+            .expect("load record fail");
 
     let eq = save_record == load_record;
     save_record.print();
@@ -485,19 +526,16 @@ fn fbc_save_load_record_test() {
 #[test]
 fn fbc_save_load_analizer_test() {
     let save_analyser = FrequencyAnalyser::new();
-    let contents = fs::read("test_files_input/lowinput.txt")
-        .expect("Should have been able to read the file");
+    let contents =
+        fs::read("test_files_input/lowinput.txt").expect("Should have been able to read the file");
     save_analyser.append_dict(&contents);
 
     println!("save analyser: {}", save_analyser.dict.len());
     for it in save_analyser.dict.iter().take(5) {
-        println!(
-            "{} {} {}",
-            it.occurrence_num, it.size, it.hash
-        );
+        println!("{} {} {}", it.occurrence_num, it.size, it.hash);
     }
     println!("");
-    
+
     let file = path::Path::new("./save_load_analizer.txt");
     save_analyser.save_to_file(file).expect("fail to save!");
 
@@ -505,10 +543,7 @@ fn fbc_save_load_analizer_test() {
 
     println!("load analyser: {}", load_analyser.dict.len());
     for it in load_analyser.dict.iter().take(5) {
-        println!(
-            "{} {} {}",
-            it.occurrence_num, it.size, it.hash
-        );
+        println!("{} {} {}", it.occurrence_num, it.size, it.hash);
     }
     println!("");
 
@@ -520,16 +555,16 @@ fn fbc_save_load_analizer_test() {
 #[test]
 fn fbc_load_hashes_analizer_test() {
     let save_analyser = FrequencyAnalyser::new();
-    let contents = fs::read("test_files_input/lowinput.txt")
-        .expect("Should have been able to read the file");
+    let contents =
+        fs::read("test_files_input/lowinput.txt").expect("Should have been able to read the file");
     save_analyser.append_dict(&contents);
 
     let file = path::Path::new("./load_hashes_analizer.txt");
     save_analyser.save_to_file(file).expect("fail to save!");
 
-    let load_hashes = FrequencyAnalyser::load_hashes(
-            &mut fs::File::open(file).expect("file open fail")
-        ).expect("get hashes fail");
+    let load_hashes =
+        FrequencyAnalyser::load_hashes(&mut fs::File::open(file).expect("file open fail"))
+            .expect("get hashes fail");
 
     for it in load_hashes.iter() {
         if save_analyser.dict.contains_key(it) == false {
@@ -547,8 +582,8 @@ fn fbc_load_hashes_analizer_test() {
 #[test]
 fn fbc_update_analizer_test() {
     let path = path::Path::new("./update_analizer.txt");
-    let contents = fs::read("test_files_input/lowinput.txt")
-        .expect("Should have been able to read the file");
+    let contents =
+        fs::read("test_files_input/lowinput.txt").expect("Should have been able to read the file");
     println!("content size: {}", contents.len());
 
     let save_analyser = FrequencyAnalyser::new();
@@ -556,29 +591,28 @@ fn fbc_update_analizer_test() {
     let len = save_analyser.save_to_file(path).expect("fail to save!");
 
     let mut k = true;
-    let new_content = contents.into_iter()
-    .filter(|a| {
-        k = !k;
-        k
-    })
-    .collect::<Vec<u8>>();
+    let new_content = contents
+        .into_iter()
+        .filter(|a| {
+            k = !k;
+            k
+        })
+        .collect::<Vec<u8>>();
     println!("new_content size: {}", new_content.len());
 
     let mut other_analizer = FrequencyAnalyser::new();
     other_analizer.append_dict(&new_content);
-    let d_len = FrequencyAnalyser::update(path, &other_analizer
-        .get_dict()
-        .into_iter()
-        .map(|(a, b)| b)
-        .collect::<Vec<DictRecord>>()
-    ).expect("upgrade fail");
+    let d_len = FrequencyAnalyser::update(
+        path,
+        &other_analizer
+            .get_dict()
+            .into_iter()
+            .map(|(a, b)| b)
+            .collect::<Vec<DictRecord>>(),
+    )
+    .expect("upgrade fail");
 
-    let analizer = FrequencyAnalyser::load_from_file(path)
-        .expect("error to load updated file");
+    let analizer = FrequencyAnalyser::load_from_file(path).expect("error to load updated file");
     let eq = len + d_len == analizer.dict.len();
     assert!(eq, "the number of records does not converge")
 }
-
-
-
-

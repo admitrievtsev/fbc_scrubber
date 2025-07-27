@@ -4,9 +4,9 @@ use std::hash::{DefaultHasher, Hasher};
 use std::io::Write;
 use std::string::String;
 use std::vec::Vec;
+
 use crate::fbc_chunker::FBCChunk::{Sharped, Solid};
 use crate::frequency_analyser::DictRecord;
-
 use crate::hash_chunk;
 
 //Max size of frequent chunk that can be found by analyser
@@ -36,12 +36,10 @@ impl FBCChunk {
     /// calculate len of chunk
     fn len(&self, map: &HashMap<FBCHash, FBCChunk>) -> usize {
         match &self {
-            Solid(sl) => { sl.len() },
-            Sharped(sh) => { 
-                sh.iter().fold(0, |acc, element| { 
-                    acc + Self::len(map.get(element).expect("Chunk NPE"), map)
-                })
-            }
+            Solid(sl) => sl.len(),
+            Sharped(sh) => sh.iter().fold(0, |acc, element| {
+                acc + Self::len(map.get(element).expect("Chunk NPE"), map)
+            }),
         }
     }
 }
@@ -71,7 +69,7 @@ impl ChunkerFBC {
         let res = self.insert_chunk(first_stage_chunk);
         self.chunk_ids.push(res);
     }
-    
+
     //This method is to print chunking results out
     fn to_str(word: Vec<u8>) -> String {
         String::from_utf8(word).expect("UTF-8 formatting failure")
@@ -90,11 +88,9 @@ impl ChunkerFBC {
      */
     fn reconstruct_chunk_from_hash(&self, hash: &FBCHash, mut depth: u32) -> Vec<u8> {
         let mut main_chunk: Vec<u8> = vec![];
-        match self.chunks.get(&hash).expect("Chunk NPE") {
-            Solid(chunk) => { 
-                main_chunk.append(&mut chunk.clone()) 
-            },
-            Sharped(chunks) => { 
+        match self.chunks.get(hash).expect("Chunk NPE") {
+            Solid(chunk) => main_chunk.append(&mut chunk.clone()),
+            Sharped(chunks) => {
                 // print!("{depth}, {} {}", chunks.len(), hash);
                 // for it in chunks.iter() {
                 //     print!(" {it}");
@@ -102,7 +98,7 @@ impl ChunkerFBC {
                 // println!();
 
                 depth += 1;
-                main_chunk.append(&mut self.reconstruct_chunk(&chunks, depth)) 
+                main_chunk.append(&mut self.reconstruct_chunk(chunks, depth))
             }
         }
         main_chunk
@@ -110,7 +106,7 @@ impl ChunkerFBC {
 
     fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>, depth: u32) -> Vec<u8> {
         let mut main_chunk: Vec<u8> = vec![];
-        
+
         for hash in hashes {
             main_chunk.append(&mut Self::reconstruct_chunk_from_hash(self, hash, depth));
         }
@@ -133,7 +129,9 @@ impl ChunkerFBC {
         // all_len
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
-            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id, 0)));
+            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(
+                self, id, 0,
+            )));
         }
         //println!("PRINT TO FILE");
         println!("{}", string_out.len());
@@ -144,7 +142,9 @@ impl ChunkerFBC {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
             string_out.push_str("{\n");
-            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(self, id, 0)));
+            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(
+                self, id, 0,
+            )));
             string_out.push_str("\n}\n");
         }
         //println!("PRINT TO FILE");
@@ -155,9 +155,14 @@ impl ChunkerFBC {
     // This method contains FBC chunker implementation
     /// chunk_partitioning - size, offset
     /// first places get first check
-    /// if approach big and small sizes win is the first one specified 
-    pub fn fbc_dedup(&mut self, dict: &HashMap<FBCHash, DictRecord>, chunk_partitioning: &Vec<(usize, usize)>) -> usize {
-        let min_chunk_size = chunk_partitioning.iter()
+    /// if approach big and small sizes win is the first one specified
+    pub fn fbc_dedup(
+        &mut self,
+        dict: &HashMap<FBCHash, DictRecord>,
+        chunk_partitioning: &Vec<(usize, usize)>,
+    ) -> usize {
+        let min_chunk_size = chunk_partitioning
+            .iter()
             .map(|x| x.0)
             .min()
             .expect("panic on calculate min chunk size, fbs deduplicate");
@@ -172,10 +177,10 @@ impl ChunkerFBC {
                 println!("Checked: {}", chunk_deque.len())
             }
             k += 1;
-            
+
             // get hash
             let chunk_index = chunk_deque.pop_back().unwrap();
-            
+
             // if current chunk already exist in dict
             if dict.contains_key(&chunk_index) {
                 break;
@@ -183,14 +188,12 @@ impl ChunkerFBC {
 
             // create reference to chunk to cut
             let unchecked_chunk = match &self.chunks.get(&chunk_index).expect("Chunk NPE") {
-                Sharped(_) => { continue }
-                Solid(chunk) => { chunk }
+                Sharped(_) => continue,
+                Solid(chunk) => chunk,
             };
             // move in chunk
             let mut chunk_char = 0;
-            while (chunk_char as i128)
-                < unchecked_chunk.len() as i128 - min_chunk_size as i128
-            {
+            while (chunk_char as i128) < unchecked_chunk.len() as i128 - min_chunk_size as i128 {
                 let mut chunk_hash = 0;
                 let mut dict_rec = None;
 
@@ -208,56 +211,44 @@ impl ChunkerFBC {
                 if let Some(dict_rec) = dict_rec {
                     if chunk_char == 0 {
                         // if big chunk start from is known
-                        
+
                         // let clone = unchecked_chunk.clone();
                         let new_chunk = unchecked_chunk[dict_rec.get_len()..].to_vec();
                         let new_hash = self.insert_chunk_vec(new_chunk.clone());
-                        
+
                         // add new chunk for analize
                         chunk_deque.push_front(new_hash);
-                       
-                        self.replace_all_two(
-                            chunk_index, 
-                            chunk_hash, 
-                            new_hash);
+
+                        self.replace_all_two(chunk_index, chunk_hash, new_hash);
                     } else if chunk_char + dict_rec.get_len() == unchecked_chunk.len() {
                         // if is known chunk in end of big chunk
 
                         let new_chunk = unchecked_chunk[..chunk_char].to_vec();
                         let new_hash = self.insert_chunk_vec(new_chunk);
-                        
+
                         // not add chunk for analize
-                        
-                        self.replace_all_two(
-                            chunk_index,
-                            new_hash,
-                            chunk_hash,
-                        );
-                    }
-                    else {
+
+                        self.replace_all_two(chunk_index, new_hash, chunk_hash);
+                    } else {
                         // if is known chunk in midle of big chunk
-                        
+
                         // start
                         let new_chunk_1st = unchecked_chunk[..chunk_char].to_vec();
                         //end
-                        let new_chunk_2st = unchecked_chunk[chunk_char + dict_rec.get_len()..].to_vec();
+                        let new_chunk_2st =
+                            unchecked_chunk[chunk_char + dict_rec.get_len()..].to_vec();
 
                         let new_hash_1st = self.insert_chunk_vec(new_chunk_1st);
                         let new_hash_2nd = self.insert_chunk_vec(new_chunk_2st);
-                        
+
                         // add new chunk for analize
                         chunk_deque.push_front(new_hash_2nd);
 
-                        self.replace_all_three(
-                            chunk_index,
-                            new_hash_1st,
-                            chunk_hash,
-                            new_hash_2nd,
-                        );
+                        self.replace_all_three(chunk_index, new_hash_1st, chunk_hash, new_hash_2nd);
                     }
-                    
+
                     if !self.chunks.contains_key(&chunk_hash) {
-                        let _ = self.insert_chunk(&dict_rec.get_chunk_ref());
+                        let _ = self.insert_chunk(dict_rec.get_chunk_ref());
                     }
                     break;
                 } else {
@@ -265,12 +256,7 @@ impl ChunkerFBC {
                 }
             }
         }
-        println!(
-            "{}",
-            self.dict_size() + self.chunk_ids.len() * 8
-        );
-        
-        
+        println!("{}", self.dict_size() + self.chunk_ids.len() * 8);
 
         self.dict_size() + self.chunk_ids.len() * 8
     }
@@ -299,7 +285,13 @@ impl ChunkerFBC {
     }
 
     // Slicing chunk on 3 different
-    fn replace_all_three(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash, third: FBCHash) {
+    fn replace_all_three(
+        &mut self,
+        to_change: FBCHash,
+        first: FBCHash,
+        second: FBCHash,
+        third: FBCHash,
+    ) {
         *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second, third]);
     }
 
@@ -307,17 +299,21 @@ impl ChunkerFBC {
     // You can call this method to reduce analyser records with low frequency
     // It will force scrubber to run faster but also will reduce dedup gain
     fn dict_count_size(&self) -> usize {
-        self.chunks.values().fold(0, |acc, x| acc + x.len(&self.chunks))
+        self.chunks
+            .values()
+            .fold(0, |acc, x| acc + x.len(&self.chunks))
     }
 
     // compute size to storage chunks
     fn dict_size(&self) -> usize {
         self.chunks.values().fold(0, |acc, x| {
-            acc + match &x { 
+            acc + match &x {
                 FBCChunk::Solid(chunk) => chunk.len() + size_of::<FBCHash>(),
-                                                     // len of chunk + self hash
-                FBCChunk::Sharped(chunks) => chunks.len() * size_of::<FBCHash>() + size_of::<usize>() + size_of::<FBCHash>(),
-                                                                                                 // len of chunks    self hash
+                // len of chunk + self hash
+                FBCChunk::Sharped(chunks) => {
+                    chunks.len() * size_of::<FBCHash>() + size_of::<usize>() + size_of::<FBCHash>()
+                }
+                // len of chunks    self hash
             }
         })
     }
@@ -349,11 +345,9 @@ impl ChunkerFBC {
 }
 
 mod test {
-    use core::panic;
-
-    use crate::fbc_chunker::FBCChunk;
-    use crate::{hash_chunk, ChunkerFBC};
+    use crate::fbc_chunker::{ChunkerFBC, FBCChunk};
     use crate::frequency_analyser::FrequencyAnalyser;
+    use crate::hash_chunk;
 
     #[test]
     fn fbc_chunker_dedup_test() {
@@ -366,17 +360,21 @@ mod test {
             let mut analyser = FrequencyAnalyser::new();
             let data_1_hash = hash_chunk(data_1);
             analyser.append_dict(data_1);
-            
+
             chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
-            
-            let res = if let FBCChunk::Solid(res) = chunker.chunks.get(&data_1_hash).unwrap() { 
-                    res 
-                } else { 
-                    panic!("Not expected chunk type") 
-                };
+
+            let res = if let FBCChunk::Solid(res) = chunker.chunks.get(&data_1_hash).unwrap() {
+                res
+            } else {
+                panic!("Not expected chunk type")
+            };
             assert_eq!(res, data_1, "chunk not dedup");
             assert_eq!(chunker.chunks.len(), 1, "chunks len not expected");
-            assert_eq!(chunker.chunk_ids, vec![data_1_hash], "chunk id not expected");
+            assert_eq!(
+                chunker.chunk_ids,
+                vec![data_1_hash],
+                "chunk id not expected"
+            );
             // [1, 2, 3, 4, 5, 6]
         }
         {
@@ -393,12 +391,16 @@ mod test {
             chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
 
             assert_eq!(chunker.chunks.len(), 3, "chunks len not expected");
-            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_prev_hash).unwrap() { 
-                    res 
-                } else { 
-                    panic!("Not expected chunk type") 
-                };
-            assert_eq!(*res, vec![data_1_hash, data_2_hash], "chunk id not expected");
+            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_prev_hash).unwrap() {
+                res
+            } else {
+                panic!("Not expected chunk type")
+            };
+            assert_eq!(
+                *res,
+                vec![data_1_hash, data_2_hash],
+                "chunk id not expected"
+            );
         }
         {
             let mut chunker = ChunkerFBC::default();
@@ -413,24 +415,25 @@ mod test {
             let hash_2 = hash_chunk(&[1, 2, 1]);
 
             chunker.add_cdc_chunk(data);
-            
+
             analyser.append_dict(data);
 
             chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
-            
+
             assert_eq!(chunker.chunks.len(), 3 + 1, "chunks len not expected");
-            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_hash).unwrap() { 
-                    res 
-                } else { 
-                    panic!("Not expected chunk type") 
-                };
+            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_hash).unwrap() {
+                res
+            } else {
+                panic!("Not expected chunk type")
+            };
             assert_eq!(*res, vec![hash_1, data_slice_hash], "chunk id not expected");
 
-            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_slice_hash).unwrap() { 
-                    res 
-                } else { 
-                    panic!("Not expected chunk type") 
-                };
+            let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_slice_hash).unwrap()
+            {
+                res
+            } else {
+                panic!("Not expected chunk type")
+            };
             assert_eq!(*res, vec![hash_2, hash_2], "chunk id not expected");
         }
     }
