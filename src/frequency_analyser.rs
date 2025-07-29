@@ -69,13 +69,14 @@ impl FrequencyAnalyser {
     }
 
     /// chunk_partitioning - (size, offset)
-    pub fn new_with_distribution(chunk_partitioning: Vec<(usize, usize)>) -> Self {
+    pub fn new_with_partitioning(chunk_partitioning: Vec<(usize, usize)>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
             chunk_partitioning,
         }
     }
 
+    /// offset if 1 / 4 of size
     pub fn new_with_sizes(chunk_sizes: Vec<usize>) -> Self {
         FrequencyAnalyser {
             dict: Arc::new(DashMap::new()),
@@ -86,6 +87,39 @@ impl FrequencyAnalyser {
         }
     }
 
+    /// shrinking partitioning to specified
+    pub fn trim_to_partitioning(&mut self, chunk_partitioning: &[(usize, usize)]) {
+        self.dict.retain(|_, a| {
+            let mut res = false;
+
+            for it in chunk_partitioning.iter() {
+                if it.0 == a.get_size() && it.1 == a.get_size() {
+                    res = true;
+                    break;
+                }
+            }
+
+            res
+        })
+    }
+
+    pub fn trim_to_sizes(&mut self, chunk_sizes: &[usize]) {
+        self.dict.retain(|_, a| {
+            let mut res = false;
+
+            for it in chunk_sizes.iter() {
+                if *it == a.get_size() {
+                    res = true;
+                    break;
+                }
+            }
+
+            res
+        })
+    }
+
+
+    /// get dictionary
     pub fn get_dict(&mut self) -> HashMap<FBCHash, DictRecord> {
         let mut tmp_hmap = HashMap::new();
         for i in self.dict.clone().iter() {
@@ -94,6 +128,7 @@ impl FrequencyAnalyser {
         tmp_hmap
     }
 
+    /// return analizer partitioning
     pub fn get_chunk_partitioning(&self) -> &Vec<(usize, usize)> {
         &self.chunk_partitioning
     }
@@ -135,14 +170,18 @@ impl FrequencyAnalyser {
             }
         }
     }
+
+    /// remove chunks with occucrence less than specified
     pub fn reduce_low_occur(&mut self, occurrence: u32) {
+        let all_remaining = Self::count_candidates(self, occurrence);
         self.dict
             .clone()
             .retain(|_, v| v.occurrence_num >= occurrence);
         self.dict.shrink_to_fit();
-        println!("REDUCED")
+        println!("REDUCED {occurrence}; remaining: {all_remaining}");
     }
 
+    /// return count saved chunks with occucrence more or equal than specified
     pub fn count_candidates(&mut self, occurrence: u32) -> u32 {
         let mut dups = 0;
         for i in self.dict.iter() {
@@ -166,10 +205,9 @@ impl FrequencyAnalyser {
     }
 
     pub fn append_dict(&self, first_stage_chunk: &[u8]) {
-        let mut index = 0;
-        let mut save_index = 0;
-
         for (size, offset) in self.chunk_partitioning.iter() {
+            let mut index = 0;
+            let mut save_index = 0;
             // while index < first_stage_chunk.len() - size + 1 {
             while index + size < first_stage_chunk.len() + 1 {
                 let res = FrequencyAnalyser::add_chunk(
@@ -191,8 +229,12 @@ impl FrequencyAnalyser {
     /// return true if chunk was inserted to target map
     pub fn add_chunk(chunk: &[u8], target_map: Arc<DashMap<FBCHash, DictRecord>>) -> bool {
         //println!("Add started");
-        let size = chunk.len();
         let chunk_hash = hash_chunk(chunk);
+
+        if chunk.len() <= 1 {
+            let mut buf  = String::new();
+            std::io::stdin().read_line(&mut buf);
+        }
         //println!("Ready to check");
         // print!("{{\n{}\n}}\n", String::from_utf8(chunk.to_vec()).unwrap());
         match target_map.get_mut(&chunk_hash) {
@@ -206,7 +248,7 @@ impl FrequencyAnalyser {
                     DictRecord {
                         chunk: chunk.to_vec(),
                         occurrence_num: 1,
-                        size,
+                        size: chunk.len(),
                         hash: chunk_hash,
                     },
                 );
@@ -252,7 +294,7 @@ fn fbc_add_chunk_analizer_test() {
 
 #[test]
 fn fbc_append_dict_analizer_test() {
-    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(8, 1)]);
+    let mut analizer = FrequencyAnalyser::new_with_partitioning(vec![(8, 1)]);
 
     let content_1: &[u8] = &[1, 2, 3, 4];
     analizer.append_dict(content_1);
@@ -260,7 +302,7 @@ fn fbc_append_dict_analizer_test() {
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 0, "Dumb check");
 
-    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(4, 1)]);
+    let mut analizer = FrequencyAnalyser::new_with_partitioning(vec![(4, 1)]);
 
     let content_1: &[u8] = &[1, 2, 3, 4];
     analizer.append_dict(content_1);
@@ -312,7 +354,7 @@ fn fbc_append_dict_analizer_test() {
     [4 5 1] 1
     [5 1 2] 1
      */
-    let mut analizer = FrequencyAnalyser::new_with_distribution(vec![(3, 1)]);
+    let mut analizer = FrequencyAnalyser::new_with_partitioning(vec![(3, 1)]);
 
     let content_1: &[u8] = &[2, 3, 4];
     analizer.append_dict(content_1);
@@ -354,7 +396,8 @@ fn fbc_append_dict_analizer_test() {
 }
 
 impl FrequencyAnalyser {
-    /* retunt count unique saved recored */
+    /// save analizer to file
+    /// retunt count unique saved recored 
     pub fn save_to_file(&self, path: &path::Path) -> Result<usize, io::Error> {
         /* create file */
         let mut file = fs::File::create(path)?;
@@ -365,8 +408,23 @@ impl FrequencyAnalyser {
         for it in self.dict.iter() {
             it.save_to_file(&mut file)?;
         }
-
+        Self::save_chunk_partitioning(&self.chunk_partitioning, &mut file)?;
+        
         Ok(self.dict.len())
+    }
+
+    fn save_chunk_partitioning(chunk_partitioning: &Vec<(usize, usize)>, file: &mut fs::File) -> Result<(), io::Error> {
+        // write chunk partitioning size
+        file.write(usize::to_be_bytes(chunk_partitioning.len()).as_slice())?;
+        // write partitioning
+        for it in chunk_partitioning {
+            // write size
+            file.write(usize::to_be_bytes(it.0).as_slice())?;
+            // write offset
+            file.write(usize::to_be_bytes(it.1).as_slice())?;
+        }
+        
+        Ok(())
     }
 
     pub fn load_from_file(path: &path::Path) -> Result<Self, io::Error> {
@@ -385,13 +443,50 @@ impl FrequencyAnalyser {
             return Err(io::Error::other("error reserve memory!"));
         }
 
+        println!("dict size: {count_records}");
+        std::io::stdout().flush().unwrap();
+
         /* read records */
         for _i in 0..count_records {
-            let recored = DictRecord::load_from_file(&mut file)?;
-            analyser.dict.insert(recored.hash, recored);
+            std::io::stdout().flush().unwrap();
+            let record = DictRecord::load_from_file(&mut file)?;
+            analyser.dict.insert(record.hash, record);
         }
 
+        println!("load dict");
+        std::io::stdout().flush().unwrap();
+
+        analyser.chunk_partitioning = Self::load_chunk_partitioning(&mut file)?;
+//1405226
+//7277413
+//2470041
         Ok(analyser)
+    }
+
+    fn load_chunk_partitioning(file: &mut fs::File) -> Result<Vec<(usize, usize)>, io::Error>{
+        // read partitioning size
+        const SIZE: usize = size_of::<usize>();
+        let mut buffer = [0; SIZE];
+        /* read buffer */
+        file.read(&mut buffer)?;
+        let size = usize::from_be_bytes(buffer);
+        let mut chunk_partitioning = Vec::with_capacity(size);
+
+        println!("chunk partitioning size: {size}");
+        std::io::stdout().flush().unwrap();
+
+        for _ in 0..size {
+            // read chunk partitioning size
+            file.read(&mut buffer)?;
+            let par_size = usize::from_be_bytes(buffer);
+            // read chunk partitioning offset
+            file.read(&mut buffer)?;
+            let par_offset = usize::from_be_bytes(buffer);
+
+            chunk_partitioning.push((par_size, par_offset));
+        }
+
+        Ok(chunk_partitioning)
     }
 
     /* read count of records in file */
@@ -423,6 +518,7 @@ impl FrequencyAnalyser {
     pub fn update(path: &path::Path, new_records: &[DictRecord]) -> Result<usize, io::Error> {
         let mut file = fs::OpenOptions::new().read(true).write(true).open(path)?;
         let existed_hashes = Self::load_hashes(&mut file)?;
+        let partitioning = Self::load_chunk_partitioning(&mut file)?;
         let mut unique_records_indexes = Vec::new();
 
         /* count unique records */
@@ -439,11 +535,14 @@ impl FrequencyAnalyser {
         /* write new len */
         file.write(new_len.to_be_bytes().as_slice())?;
         /* set write to end of file */
-        file.seek(io::SeekFrom::End(0))?;
+        let partitioning_writed_size = (size_of::<usize>() + size_of::<usize>() * 2 * partitioning.len()) as i64;
+        file.seek(io::SeekFrom::End(-partitioning_writed_size))?;
         /* write all unique records */
         for i in unique_records_indexes.iter() {
             new_records.get(*i).unwrap().save_to_file(&mut file)?;
         }
+        // write partion to end
+        Self::save_chunk_partitioning(&partitioning, &mut file)?;
 
         Ok(unique_records_indexes.len())
     }
@@ -489,6 +588,7 @@ impl DictRecord {
     pub fn load_from_file(file: &mut fs::File) -> Result<Self, io::Error> {
         let mut result = Self::load_with_out_chunk(file)?;
 
+        std::io::stdout().flush().unwrap();
         /* resize chunk */
         result.chunk.resize(result.size, 0);
 
@@ -521,6 +621,8 @@ fn fbc_save_load_record_test() {
     load_record.print();
 
     assert_eq!(eq, true, "load and save records not equal!");
+
+    fs::remove_file(file);
 }
 
 #[test]
@@ -548,8 +650,12 @@ fn fbc_save_load_analizer_test() {
     println!("");
 
     let eq = save_analyser.dict == load_analyser.dict;
+    assert!(eq, "source and loaded analizer dict not equal!");
 
-    assert!(eq, "source and loaded analizer not equal!");
+    let eq = save_analyser.chunk_partitioning == load_analyser.chunk_partitioning;
+    assert!(eq, "source and loaded analizer chunk partitioning not equal!");
+
+    fs::remove_file(file);
 }
 
 #[test]
@@ -577,6 +683,8 @@ fn fbc_load_hashes_analizer_test() {
             panic!("source key not load");
         }
     }
+
+    fs::remove_file(file);
 }
 
 #[test]
@@ -614,5 +722,9 @@ fn fbc_update_analizer_test() {
 
     let analizer = FrequencyAnalyser::load_from_file(path).expect("error to load updated file");
     let eq = len + d_len == analizer.dict.len();
-    assert!(eq, "the number of records does not converge")
+    assert!(eq, "the number of records does not converge");
+    let eq = other_analizer.chunk_partitioning == analizer.chunk_partitioning;
+    assert!(eq, "the chunk partitioning does not converge");
+
+    fs::remove_file(path);
 }

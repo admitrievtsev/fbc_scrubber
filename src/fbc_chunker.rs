@@ -71,8 +71,8 @@ impl ChunkerFBC {
     }
 
     //This method is to print chunking results out
-    fn to_str(word: Vec<u8>) -> String {
-        String::from_utf8(word).expect("UTF-8 formatting failure")
+    fn to_str(word: &[u8]) -> String {
+        String::from_utf8_lossy(word).to_string()
     }
 
     //Updating analyser occurrences counter
@@ -127,30 +127,28 @@ impl ChunkerFBC {
         // }
         // println!("{}", all_len);
         // all_len
-        let mut string_out = String::new();
+        let mut all = Vec::new();
         for id in self.chunk_ids.iter() {
-            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(
+            all.append(&mut Self::reconstruct_chunk_from_hash(
                 self, id, 0,
-            )));
+            ));
         }
         //println!("PRINT TO FILE");
-        println!("{}", string_out.len());
-        fs::write(file_out, &string_out).expect("Unable to write the file");
-        string_out.len()
+        println!("{}", all.len());
+        fs::write(file_out, &all).expect("Unable to write the file");
+        all.len()
     }
-    pub fn reduplicate_by_chunks(&self, file_out: &str) -> usize {
+    pub fn reduplicate_by_chunks(&self) -> String {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
             string_out.push_str("{\n");
-            string_out.push_str(&Self::to_str(Self::reconstruct_chunk_from_hash(
+            string_out.push_str(&String::from_utf8_lossy(Self::reconstruct_chunk_from_hash(
                 self, id, 0,
-            )));
+            ).as_slice()));
             string_out.push_str("\n}\n");
         }
         //println!("PRINT TO FILE");
-        println!("{}", string_out.len());
-        fs::write(file_out, &string_out).expect("Unable to write the file");
-        string_out.len()
+        string_out
     }
     // This method contains FBC chunker implementation
     /// chunk_partitioning - size, offset
@@ -378,7 +376,7 @@ mod test {
             // [1, 2, 3, 4, 5, 6]
         }
         {
-            let mut analyser = FrequencyAnalyser::new_with_distribution(vec![(3, 1)]);
+            let mut analyser = FrequencyAnalyser::new_with_partitioning(vec![(3, 1)]);
             let data_1: &[u8] = &[1, 2, 3];
             let data_2: &[u8] = &[4, 5, 6];
             let data_prev_hash = hash_chunk(&[1, 2, 3, 4, 5, 6]);
@@ -404,7 +402,7 @@ mod test {
         }
         {
             let mut chunker = ChunkerFBC::default();
-            let mut analyser = FrequencyAnalyser::new_with_distribution(vec![(3, 1)]);
+            let mut analyser = FrequencyAnalyser::new_with_partitioning(vec![(3, 1)]);
 
             //                  [     ]  [              ]
             //                           [     ]  [     ]
