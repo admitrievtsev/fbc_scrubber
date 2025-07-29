@@ -21,12 +21,44 @@ fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::i
 }
 
 fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usize)> {
-    let mut analyser = FrequencyAnalyser::new_with_sizes(analize_sizes.clone());
-    let mut chunker = ChunkerFBC::default();
     let path_string = "../test_files_input/".to_string() + name;
     let path = std::path::Path::new(path_string.as_str());
     let contents = fs::read(&path).expect("Should have been able to read the file");
-    analyser.append_dict(&contents);
+    
+    let mut analyser;
+    let save_file_string = "./save_analizer_".to_string() + name + ".txt";
+    let save_file_path = std::path::Path::new(save_file_string.as_str());
+    if !fs::exists(save_file_path).unwrap() {
+        println!("file not exist");
+
+        let all_sizes = [
+            // 512,
+            1024,
+            2048,
+            4096,
+            8192,
+        ].to_vec();
+        analyser = FrequencyAnalyser::new_with_sizes(all_sizes);
+        println!("{:?}", analyser.get_chunk_partitioning());
+        analyser.append_dict(&contents);
+
+        for i in 1..40 {
+            println!("{} {}", i, analyser.count_candidates(i))
+        }
+        analyser.reduce_low_occur(4);
+        analyser.save_to_file(save_file_path).unwrap();
+
+        println!("file saved");
+    } else {
+        println!("file exist");
+
+        analyser = FrequencyAnalyser::load_from_file(save_file_path).unwrap();
+        
+        println!("file load");
+    }
+    let mut chunker = ChunkerFBC::default();
+    
+    analyser.trim_to_sizes(analize_sizes.as_slice());
 
     let mut i = 0;
     while i < contents.len() - dt {
@@ -43,10 +75,10 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
     //     // println!("chnk:\n{:?}", v.get_chunk());
     // }
 
-    let dedup = chunker.fbc_dedup(&a, analyser.get_chunck_partitioning());
+    let dedup = chunker.fbc_dedup(&a, analyser.get_chunk_partitioning());
     let rededup = chunker.reduplicate("out.txt");
-    let pure_size = chunker.get_size_pure_chuncks();
-    let count_chuncks = chunker.get_count_chuncks();
+    let pure_size = chunker.get_size_pure_chunks();
+    let count_chuncks = chunker.get_count_chunks();
 
     println!("dedup: {}", rededup as f64 / dedup as f64);
     println!("dedup: {}", rededup as f64 / pure_size as f64);
@@ -55,8 +87,10 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
         print!("{it} ");
     }
 
-    if fs::read(path).expect("Should have been able to read lowinput")
-        != fs::read("out.txt").expect("Should have been able to read out file")
+    let eq = fs::read(path).expect("Should have been able to read lowinput") != fs::read("out.txt").expect("Should have been able to read out file");
+    fs::remove_file("out.txt").unwrap();
+    
+    if eq
     {
         let mut name = String::new();
         println!("");
@@ -65,8 +99,8 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
             fs::metadata(path).unwrap().len(),
             fs::read("out.txt").unwrap().len()
         );
-        chunker.reduplicate_by_chuncks("_out.txt");
-        std::io::stdin().read_line(&mut name);
+        let _ = fs::write("_out.txt", chunker.reduplicate_by_chunks());
+        let _ = std::io::stdin().read_line(&mut name);
         println!("");
         println!("");
         None
@@ -80,35 +114,28 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
 }
 
 fn main() {
+    let Kb = 1024 * 8;
     let names = [
-        "fbc_topic_input.txt",
-        "lowinput.txt",
-        "orient_express_input.txt",
+        "linux-3.4.6-7.tar"
+        // "fbc_topic_input.txt",
+        // "lowinput.txt",
+        // "orient_express_input.txt",
     ];
     let dts = [
-        128 * 2,
-        128 * 3,
-        128 * 4,
-        128 * 5,
-        128 * 6,
-        128 * 7,
-        128 * 8, // 0        1       2         3         4         5       6
+        // 6 * Kb,
+        // 8 * Kb,
+        10 * Kb,
+        // 12 * Kb,
+        // 16 * Kb,
+        // 32 * Kb,
     ];
 
-    let all_sizes = [
-        vec![32],
-        vec![64],
-        vec![128],
-        vec![256],
-        //    0         1          2          3
-        vec![64, 32],
-        vec![128, 64, 32],
-        vec![128, 64],
-        vec![256, 128, 64],
-        vec![256, 128],
-        //      4                5               6                 7               8
-        vec![256, 64],
-        vec![128, 32], //      9             10
+    let all_sizes: &[Vec<usize>] = &[
+        // [512].to_vec(),
+        [1024].to_vec(),
+        // [2048].to_vec(),
+        // [4096].to_vec(),
+        // [8192].to_vec(),
     ];
 
     // f(names[0], dts[1], all_sizes[7].clone());
