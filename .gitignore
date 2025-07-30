@@ -20,4 +20,5 @@ Cargo.lock
 
 runner/*.csv
 runner/save_analizer_linux-3.4.6-7.tar.txt
+runner/experement_result.csv
 test_files_input/*.tar
