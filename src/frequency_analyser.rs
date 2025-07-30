@@ -2,12 +2,9 @@ use dashmap::DashMap;
 use std::collections::{self, BTreeSet, HashMap};
 use std::sync::Arc;
 //Struct that provide occurrences counting during analysis of data
-pub const MAX_CHUNK_SIZE: usize = 128;
-const MIN_CHUNK_SIZE: usize = 127;
 use crate::FBCHash;
 use crate::{hash_chunk, THREADS_COUNT};
 use std::fs;
-use std::hash::Hasher;
 use std::io::{self, Read, Seek, Write};
 use std::path;
 use std::thread;
@@ -231,10 +228,6 @@ impl FrequencyAnalyser {
         //println!("Add started");
         let chunk_hash = hash_chunk(chunk);
 
-        if chunk.len() <= 1 {
-            let mut buf  = String::new();
-            std::io::stdin().read_line(&mut buf);
-        }
         //println!("Ready to check");
         // print!("{{\n{}\n}}\n", String::from_utf8(chunk.to_vec()).unwrap());
         match target_map.get_mut(&chunk_hash) {
@@ -403,7 +396,7 @@ impl FrequencyAnalyser {
         let mut file = fs::File::create(path)?;
 
         /* write count of records */
-        file.write(usize::to_be_bytes(self.dict.len()).as_slice())?;
+        file.write_all(usize::to_be_bytes(self.dict.len()).as_slice())?;
         /* write all records */
         for it in self.dict.iter() {
             it.save_to_file(&mut file)?;
@@ -415,13 +408,13 @@ impl FrequencyAnalyser {
 
     fn save_chunk_partitioning(chunk_partitioning: &Vec<(usize, usize)>, file: &mut fs::File) -> Result<(), io::Error> {
         // write chunk partitioning size
-        file.write(usize::to_be_bytes(chunk_partitioning.len()).as_slice())?;
+        file.write_all(usize::to_be_bytes(chunk_partitioning.len()).as_slice())?;
         // write partitioning
         for it in chunk_partitioning {
             // write size
-            file.write(usize::to_be_bytes(it.0).as_slice())?;
+            file.write_all(usize::to_be_bytes(it.0).as_slice())?;
             // write offset
-            file.write(usize::to_be_bytes(it.1).as_slice())?;
+            file.write_all(usize::to_be_bytes(it.1).as_slice())?;
         }
         
         Ok(())
@@ -468,16 +461,16 @@ impl FrequencyAnalyser {
         const SIZE: usize = size_of::<usize>();
         let mut buffer = [0; SIZE];
         /* read buffer */
-        file.read(&mut buffer)?;
+        file.read_exact(&mut buffer)?;
         let size = usize::from_be_bytes(buffer);
         let mut chunk_partitioning = Vec::with_capacity(size);
 
         for _ in 0..size {
             // read chunk partitioning size
-            file.read(&mut buffer)?;
+            file.read_exact(&mut buffer)?;
             let par_size = usize::from_be_bytes(buffer);
             // read chunk partitioning offset
-            file.read(&mut buffer)?;
+            file.read_exact(&mut buffer)?;
             let par_offset = usize::from_be_bytes(buffer);
 
             chunk_partitioning.push((par_size, par_offset));
@@ -491,7 +484,7 @@ impl FrequencyAnalyser {
         const SIZE: usize = size_of::<usize>();
         let mut buffer = [0; SIZE];
         /* read buffer */
-        file.read(&mut buffer)?;
+        file.read_exact(&mut buffer)?;
         /* read count of records from buffer */
         Ok(usize::from_be_bytes(buffer))
     }
@@ -519,8 +512,8 @@ impl FrequencyAnalyser {
         let mut unique_records_indexes = Vec::new();
 
         /* count unique records */
-        for i in 0..new_records.len() {
-            if !existed_hashes.contains(&new_records[i].hash) {
+        for (i, record) in new_records.iter().enumerate() {
+            if !existed_hashes.contains(&record.hash) {
                 unique_records_indexes.push(i);
             }
         }
@@ -530,7 +523,7 @@ impl FrequencyAnalyser {
         /* set write to start of file */
         file.seek(io::SeekFrom::Start(0))?;
         /* write new len */
-        file.write(new_len.to_be_bytes().as_slice())?;
+        file.write_all(new_len.to_be_bytes().as_slice())?;
         /* set write to end of file */
         let partitioning_writed_size = (size_of::<usize>() + size_of::<usize>() * 2 * partitioning.len()) as i64;
         file.seek(io::SeekFrom::End(-partitioning_writed_size))?;
@@ -555,10 +548,10 @@ impl DictRecord {
     }
 
     pub fn save_to_file(&self, file: &mut fs::File) -> Result<(), io::Error> {
-        file.write(FBCHash::to_be_bytes(self.hash).as_slice())?;
-        file.write(u32::to_be_bytes(self.occurrence_num).as_slice())?;
-        file.write(usize::to_be_bytes(self.size).as_slice())?;
-        file.write(self.chunk.as_slice())?;
+        file.write_all(FBCHash::to_be_bytes(self.hash).as_slice())?;
+        file.write_all(u32::to_be_bytes(self.occurrence_num).as_slice())?;
+        file.write_all(usize::to_be_bytes(self.size).as_slice())?;
+        file.write_all(self.chunk.as_slice())?;
 
         Ok(())
     }
@@ -573,7 +566,7 @@ impl DictRecord {
         /* create buffer */
         let mut buffer = [0; SIZE];
         /* read buffer */
-        file.read(&mut buffer)?;
+        file.read_exact(&mut buffer)?;
         /* read data from buffer by indexes */
         result.hash = FBCHash::from_be_bytes(buffer[0..HASH].try_into().unwrap());
         result.occurrence_num = u32::from_be_bytes(buffer[HASH..OCC_NUM].try_into().unwrap());
@@ -590,7 +583,7 @@ impl DictRecord {
         result.chunk.resize(result.size, 0);
 
         /* read chunk */
-        file.read(&mut result.chunk)?;
+        file.read_exact(&mut result.chunk)?;
 
         Ok(result)
     }

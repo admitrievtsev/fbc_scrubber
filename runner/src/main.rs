@@ -1,30 +1,14 @@
 use fbc_scrubber::fbc_chunker::ChunkerFBC;
-use fbc_scrubber::frequency_analyser::{DictRecord, FrequencyAnalyser};
-use std::fs::{self, File};
+use fbc_scrubber::frequency_analyser::FrequencyAnalyser;
+use std::fs::{self};
 
-use dashmap::DashMap;
-use std::hash::{DefaultHasher, Hasher};
-use std::io::{BufWriter, Write};
 use std::str::FromStr;
-use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
-
-fn save_map(file_name: &str, saved_map: Arc<DashMap<u64, DictRecord>>) -> std::io::Result<()> {
-    let mut string_out = String::new();
-    string_out.push_str(saved_map.len().to_string().as_str());
-
-    for element in saved_map.iter() {
-        string_out.push_str("1");
-    }
-
-    let file = std::fs::write(file_name, string_out)?;
-    Ok(())
-}
 
 fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usize, Duration, Duration, Duration, Duration)> {
     let path_string = "../test_files_input/".to_string() + name;
     let path = std::path::Path::new(path_string.as_str());
-    let contents = fs::read(&path).expect("Should have been able to read the file");
+    let contents = fs::read(path).expect("Should have been able to read the file");
     
     let mut analyser;
     let save_file_string = "./save_analizer_".to_string() + name + ".txt";
@@ -35,7 +19,7 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
         println!("file not exist");
 
         let all_sizes = [
-            512, 256, 64
+            1024, 512, 256, 64
             // 512,
             // 1024,
             // 2048,
@@ -100,7 +84,7 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
     if eq
     {
         let mut name = String::new();
-        println!("");
+        println!();
         println!(
             "NOT MATCH {} {}",
             fs::metadata(path).unwrap().len(),
@@ -108,8 +92,8 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
         );
         let _ = fs::write("_out.txt", chunker.reduplicate_by_chunks());
         let _ = std::io::stdin().read_line(&mut name);
-        println!("");
-        println!("");
+        println!();
+        println!();
         None
     } else {
         Some((
@@ -125,7 +109,7 @@ fn f(name: &str, dt: usize, analize_sizes: Vec<usize>) -> Option<(f64, f64, usiz
 }
 
 fn main() {
-    const KB: usize = 1024 * 8;
+    // const KB: usize = 1024 * 8;
     let names = [
         "linux-3.4.6-7.tar"
         // "fbc_topic_input.txt",
@@ -134,8 +118,9 @@ fn main() {
     ];
     let dts = [
         1024,
-        2048,
-        4096
+        512,
+        // 2048,
+        // 4096
         // KB
         // 6 * KB,
         // 8 * KB,
@@ -146,8 +131,11 @@ fn main() {
     ];
 
     let all_sizes: &[Vec<usize>] = &[
-        [512, 256, 64].to_vec(),
-        [512, 256].to_vec(),
+        [64].to_vec(),
+        // [256].to_vec(),
+        // [1024, 512, 256].to_vec(),
+        // [1024, 512, 256, 64].to_vec(),
+
         // [4096, 2048, 1024, 512].to_vec(),
         // [512].to_vec(),
         // [1024].to_vec(),
@@ -165,35 +153,35 @@ fn main() {
             for sizes in all_sizes.iter() {
                 let mut this_out = String::new();
                 this_out.push_str(name);
-                this_out.push_str("\t");
+                this_out.push('\t');
                 this_out.push_str(dt.to_string().as_str());
-                this_out.push_str("\t");
+                this_out.push('\t');
                 for s in sizes {
                     this_out.push_str(s.to_string().as_str());
-                    this_out.push_str(" ");
+                    this_out.push(' ');
                 }
-                this_out.push_str("\t");
+                this_out.push('\t');
 
                 println!("{this_out}");
                 match f(name, dt, sizes.clone()) {
                     Some(res) => {
                         this_out.push_str(res.0.to_string().as_str());
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.1.to_string().as_str());
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.2.to_string().as_str());
                         // analizer
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.3.as_secs_f64().to_string().as_str());
                         // add cdc
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.4.as_secs_f64().to_string().as_str());
 
                         // dedup
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.5.as_secs_f64().to_string().as_str());
                         // rededup
-                        this_out.push_str("\t");
+                        this_out.push('\t');
                         this_out.push_str(res.6.as_secs_f64().to_string().as_str());
                     }
                     None => {
@@ -201,7 +189,7 @@ fn main() {
                     }
                 }
 
-                this_out.push_str("\n");
+                this_out.push('\n');
                 println!("{this_out}");
 
                 str_out.push_str(&this_out);

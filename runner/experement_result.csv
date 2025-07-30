@@ -1,2 +1,0 @@
-file_name	dt	sizes	dedup_coef	pure_size_ratio	count_chunks	analizer_preparetion_time	add_cdc_chunck_time	dedup_time	rededup_time
-linux-3.4.6-7.tar	1024	512 256 64 	1.427303251566458	1.58146457250599	1889454	237.898156643	4.407857554	10.380326571	5.370205367

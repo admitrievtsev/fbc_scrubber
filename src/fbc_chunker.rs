@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hasher};
-use std::io::Write;
 use std::string::String;
 use std::vec::Vec;
 
@@ -9,29 +8,16 @@ use crate::fbc_chunker::FBCChunk::{Sharped, Solid};
 use crate::frequency_analyser::DictRecord;
 use crate::hash_chunk;
 
-//Max size of frequent chunk that can be found by analyser
-
-//DEBUG OLNY || Parameter of FSChunker
-const AGING_CONST: u64 = 1024 * 1024;
+// Parameter of FSChunker
 pub type FBCHash = u128;
 
-const FIXED_CHUNKER_SIZE: usize = 64;
-
-//Min size of frequent chunk that can be found by analyser
-pub const MAX_CHUNK_SIZE: usize = 128;
-const MIN_CHUNK_SIZE: usize = 7;
-//Macros that I use to increase value by 1
-macro_rules! inc {
-    ($x:expr) => {
-        $x += 1
-    };
-}
 
 enum FBCChunk {
     Solid(Vec<u8>),
     Sharped(Vec<FBCHash>),
 }
 
+#[allow(dead_code)]
 impl FBCChunk {
     /// calculate len of chunk
     fn len(&self, map: &HashMap<FBCHash, FBCChunk>) -> usize {
@@ -51,6 +37,8 @@ pub struct ChunkerFBC {
     chunks: HashMap<FBCHash, FBCChunk>,
 }
 
+
+#[allow(dead_code)]
 impl ChunkerFBC {
     /// hash chunk and insert solid chunk in chunks
     // maybe add_chunk ?
@@ -157,7 +145,7 @@ impl ChunkerFBC {
     pub fn fbc_dedup(
         &mut self,
         dict: &HashMap<FBCHash, DictRecord>,
-        chunk_partitioning: &Vec<(usize, usize)>,
+        chunk_partitioning: &[(usize, usize)],
     ) -> usize {
         let min_chunk_size = chunk_partitioning
             .iter()
@@ -272,11 +260,13 @@ impl ChunkerFBC {
     pub fn get_count_chunks(&self) -> usize {
         self.chunks.len()
     }
+
     fn hash_chunk(tmp_vec: &Vec<u8>) -> u64 {
         let mut hasher = DefaultHasher::new();
         hasher.write(tmp_vec.as_slice());
         hasher.finish()
     }
+
     // Slicing chunk on 2 different
     fn replace_all_two(&mut self, to_change: FBCHash, first: FBCHash, second: FBCHash) {
         *self.chunks.get_mut(&to_change).unwrap() = FBCChunk::Sharped(vec![first, second]);
@@ -315,40 +305,14 @@ impl ChunkerFBC {
             }
         })
     }
-
-    // FSDedup Chunker
-    /*
-    fn simple_dedup(&mut self, f_in: &str) {
-        let contents = fs::read(f_in).expect("Should have been able to read the file");
-        println!("{}", contents.len());
-            self.make_dict(&contents);
-
-    }
-
-     */
-
-    fn throw_chunks_to_maker(&mut self) {
-        /*
-        //self.print_dict();
-        self.dict = self
-            .dict
-            .drain()
-            .filter(|x| x.1.occurrence_num > 1)
-            .collect();
-        self.fbc_dedup();
-        println!("{:?}", self.chunk_ids.len());
-        println!("{:?}", self.chunks.len());
-        */
-    }
 }
 
-mod test {
-    use crate::fbc_chunker::{ChunkerFBC, FBCChunk};
-    use crate::frequency_analyser::FrequencyAnalyser;
-    use crate::hash_chunk;
-
+mod test {    
     #[test]
     fn fbc_chunker_dedup_test() {
+        use crate::{FrequencyAnalyser, ChunkerFBC, hash_chunk};
+        use crate::fbc_chunker::FBCChunk;
+    
         let mut chunker = ChunkerFBC::default();
 
         {

@@ -81,22 +81,18 @@ where
             if cdc_data > 166925888 {
                 break;
             }
-            for i in 0..THREADS_COUNT {
-                if let Some(ptr) = data_ptr[i] {
-                    cdc_data += ptr.len() + 8;
-                }
+            for ptr in data_ptr.iter().take(THREADS_COUNT).flatten() {
+                cdc_data += ptr.len() + 8;
             }
             self.analyser.analyse_pack(data_ptr);
 
             //println!("Packs analyzed");
             //println!("THREAD_ID: {} [{:?}, {:?}, {:?}, {:?}]", *i, ptr[0], ptr[1], ptr[2], ptr[3]);
 
-            for i in 0..THREADS_COUNT {
-                if let Some(ptr) = data_ptr[i] {
-                    self.chunker.add_cdc_chunk(ptr);
-                    let tmp_key = FBCKey::new(hash_chunk(ptr), false);
-                    target_map.insert(tmp_key, ptr.to_vec().clone())?
-                }
+            for ptr in data_ptr.iter().take(THREADS_COUNT).flatten() {
+                self.chunker.add_cdc_chunk(ptr);
+                let tmp_key = FBCKey::new(hash_chunk(ptr), false);
+                target_map.insert(tmp_key, ptr.to_vec().clone())?
             }
             if cdc_data % 40 == 0 {
                 println!(
@@ -116,7 +112,7 @@ where
         }
 
         self.analyser.reduce_low_occur(2);
-        let dct = self.analyser.get_dict();
+        // let dct = self.analyser.get_dict();
         //data_left = self.chunker.fbc_dedup(&dct);
         let running_time = start_time.elapsed();
 
