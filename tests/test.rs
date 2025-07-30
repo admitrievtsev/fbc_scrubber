@@ -10,7 +10,9 @@ mod tests {
         let mut chunker = ChunkerFBC::default();
         let contents = fs::read("test_files_input/lowinput.txt")
             .expect("Should have been able to read the file");
+        
         analyser.append_dict(&contents);
+
         chunker.add_cdc_chunk(&contents[0..1000]);
         chunker.add_cdc_chunk(&contents[1000..3000]);
         chunker.add_cdc_chunk(&contents[3000..4000]);
@@ -19,8 +21,11 @@ mod tests {
         chunker.add_cdc_chunk(&contents[5500..6000]);
         chunker.add_cdc_chunk(&contents[6000..7000]);
         chunker.add_cdc_chunk(&contents[7000..contents.len()]);
+
         chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
+        
         chunker.reduplicate("out.txt");
+        
         assert_eq!(
             fs::read("test_files_input/lowinput.txt")
                 .expect("Should have been able to read lowinput"),

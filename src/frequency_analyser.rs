@@ -472,9 +472,6 @@ impl FrequencyAnalyser {
         let size = usize::from_be_bytes(buffer);
         let mut chunk_partitioning = Vec::with_capacity(size);
 
-        println!("chunk partitioning size: {size}");
-        std::io::stdout().flush().unwrap();
-
         for _ in 0..size {
             // read chunk partitioning size
             file.read(&mut buffer)?;
