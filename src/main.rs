@@ -1,16 +1,7 @@
 extern crate chunkfs;
 extern crate fbc_scrubber;
 
-use chunkfs::chunkers::{SizeParams, SuperChunker};
-use chunkfs::hashers::Sha256Hasher;
-use chunkfs::FileSystem;
-use fbc_scrubber::fbc_chunker::ChunkerFBC;
-
-use fbc_scrubber::frequency_analyser::FrequencyAnalyser;
-use fbc_scrubber::storage::FBCMap;
-use fbc_scrubber::FBCScrubber;
-use std::collections::HashMap;
-use std::{fs, io};
+use std::io;
 
 fn main() -> io::Result<()> {
     /*
