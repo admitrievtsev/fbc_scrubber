@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use std::collections::{self, BTreeSet, HashMap};
+use std::collections::{self, BTreeSet};
 use std::sync::Arc;
 //Struct that provide occurrences counting during analysis of data
 use crate::FBCHash;
@@ -32,6 +32,9 @@ impl DictRecord {
     }
     pub fn get_occurrence_num(&self) -> u32 {
         self.occurrence_num
+    }
+    pub fn to_chunck(self) -> Vec<u8> {
+        self.chunk
     }
 }
 impl Clone for DictRecord {
@@ -115,14 +118,18 @@ impl FrequencyAnalyser {
         })
     }
 
-
     /// get dictionary
-    pub fn get_dict(&mut self) -> HashMap<FBCHash, DictRecord> {
-        let mut tmp_hmap = HashMap::new();
-        for i in self.dict.clone().iter() {
-            tmp_hmap.insert(i.hash, i.clone());
-        }
-        tmp_hmap
+    pub fn get_dict(&mut self) -> Arc<DashMap<FBCHash, DictRecord>> {
+        // let mut tmp_hmap = HashMap::new();
+        // for i in self.dict.clone().iter() {
+        //     tmp_hmap.insert(i.hash, i.clone());
+        // }
+        // tmp_hmap
+        self.dict.clone()
+    }
+
+    pub fn into_dict(self) -> Arc<DashMap<FBCHash, DictRecord>> {
+        self.dict
     }
 
     /// return analizer partitioning
@@ -302,7 +309,7 @@ fn fbc_append_dict_analizer_test() {
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
-    let get_content_1 = &dict[&hash_chunk(content_1)];
+    let get_content_1 = &dict.get(&hash_chunk(content_1)).unwrap();
     assert_eq!(
         get_content_1.chunk, content_1,
         "Appended chunk and chunk in dict not equal"
@@ -313,7 +320,7 @@ fn fbc_append_dict_analizer_test() {
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 2, "Dict not append");
-    let get_content_2 = &dict[&hash_chunk(&content_2[..4])];
+    let get_content_2 = &dict.get(&hash_chunk(&content_2[..4])).unwrap();
     assert_eq!(
         get_content_2.get_chunk(),
         content_2[..4],
@@ -354,7 +361,7 @@ fn fbc_append_dict_analizer_test() {
 
     let dict = analizer.get_dict();
     assert_eq!(dict.len(), 1, "Dict not append");
-    let get_content_1 = &dict[&hash_chunk(content_1)];
+    let get_content_1 = &dict.get(&hash_chunk(content_1)).unwrap();
     assert_eq!(
         get_content_1.chunk, content_1,
         "Appended chunk and chunk in dict not equal"
@@ -374,7 +381,7 @@ fn fbc_append_dict_analizer_test() {
     assert_eq!(dict.len(), 5, "Not expected dict size");
 
     for (chunsk, occ_num) in expected_add {
-        let get_content = &dict[&hash_chunk(chunsk)];
+        let get_content = &dict.get(&hash_chunk(chunsk)).unwrap();
         assert_eq!(
             get_content.get_chunk(),
             chunsk,
@@ -390,7 +397,7 @@ fn fbc_append_dict_analizer_test() {
 
 impl FrequencyAnalyser {
     /// save analizer to file
-    /// retunt count unique saved recored 
+    /// retunt count unique saved recored
     pub fn save_to_file(&self, path: &path::Path) -> Result<usize, io::Error> {
         /* create file */
         let mut file = fs::File::create(path)?;
@@ -402,11 +409,14 @@ impl FrequencyAnalyser {
             it.save_to_file(&mut file)?;
         }
         Self::save_chunk_partitioning(&self.chunk_partitioning, &mut file)?;
-        
+
         Ok(self.dict.len())
     }
 
-    fn save_chunk_partitioning(chunk_partitioning: &Vec<(usize, usize)>, file: &mut fs::File) -> Result<(), io::Error> {
+    fn save_chunk_partitioning(
+        chunk_partitioning: &Vec<(usize, usize)>,
+        file: &mut fs::File,
+    ) -> Result<(), io::Error> {
         // write chunk partitioning size
         file.write_all(usize::to_be_bytes(chunk_partitioning.len()).as_slice())?;
         // write partitioning
@@ -416,7 +426,7 @@ impl FrequencyAnalyser {
             // write offset
             file.write_all(usize::to_be_bytes(it.1).as_slice())?;
         }
-        
+
         Ok(())
     }
 
@@ -446,17 +456,49 @@ impl FrequencyAnalyser {
             analyser.dict.insert(record.hash, record);
         }
 
-        println!("load dict");
-        std::io::stdout().flush().unwrap();
-
         analyser.chunk_partitioning = Self::load_chunk_partitioning(&mut file)?;
-//1405226
-//7277413
-//2470041
+
         Ok(analyser)
     }
 
-    fn load_chunk_partitioning(file: &mut fs::File) -> Result<Vec<(usize, usize)>, io::Error>{
+    pub fn load_from_file_with_sizes(
+        path: &path::Path,
+        chunk_partitioning: Vec<usize>,
+    ) -> Result<Self, io::Error> {
+        /* create file, map */
+        let mut file = fs::File::open(path)?;
+        let mut analyser = FrequencyAnalyser::new_with_sizes(chunk_partitioning.clone());
+
+        let count_records = Self::load_count_records(&mut file)?;
+        /* resize map */
+        let err = Arc::get_mut(&mut analyser.dict)
+            .unwrap()
+            .try_reserve(count_records);
+
+        /* return if error */
+        if err.is_err() {
+            return Err(io::Error::other("error reserve memory!"));
+        }
+
+        println!("dict size: {count_records}");
+        std::io::stdout().flush().unwrap();
+
+        /* read records */
+        for _i in 0..count_records {
+            std::io::stdout().flush().unwrap();
+            let record = DictRecord::load_from_file(&mut file)?;
+            for size in &chunk_partitioning {
+                if record.get_len() == *size {
+                    analyser.dict.insert(record.hash, record);
+                    break;
+                }
+            }
+        }
+
+        Ok(analyser)
+    }
+
+    fn load_chunk_partitioning(file: &mut fs::File) -> Result<Vec<(usize, usize)>, io::Error> {
         // read partitioning size
         const SIZE: usize = size_of::<usize>();
         let mut buffer = [0; SIZE];
@@ -525,7 +567,8 @@ impl FrequencyAnalyser {
         /* write new len */
         file.write_all(new_len.to_be_bytes().as_slice())?;
         /* set write to end of file */
-        let partitioning_writed_size = (size_of::<usize>() + size_of::<usize>() * 2 * partitioning.len()) as i64;
+        let partitioning_writed_size =
+            (size_of::<usize>() + size_of::<usize>() * 2 * partitioning.len()) as i64;
         file.seek(io::SeekFrom::End(-partitioning_writed_size))?;
         /* write all unique records */
         for i in unique_records_indexes.iter() {
@@ -643,7 +686,10 @@ fn fbc_save_load_analizer_test() {
     assert!(eq, "source and loaded analizer dict not equal!");
 
     let eq = save_analyser.chunk_partitioning == load_analyser.chunk_partitioning;
-    assert!(eq, "source and loaded analizer chunk partitioning not equal!");
+    assert!(
+        eq,
+        "source and loaded analizer chunk partitioning not equal!"
+    );
 
     fs::remove_file(file);
 }
@@ -699,21 +745,23 @@ fn fbc_update_analizer_test() {
     println!("new_content size: {}", new_content.len());
 
     let mut other_analizer = FrequencyAnalyser::new();
+    let oter_p = other_analizer.chunk_partitioning.clone();
     other_analizer.append_dict(&new_content);
     let d_len = FrequencyAnalyser::update(
         path,
-        &other_analizer
-            .get_dict()
+        Arc::into_inner(other_analizer.into_dict())
+            .unwrap()
             .into_iter()
             .map(|(a, b)| b)
-            .collect::<Vec<DictRecord>>(),
+            .collect::<Vec<DictRecord>>()
+            .as_slice(),
     )
     .expect("upgrade fail");
 
     let analizer = FrequencyAnalyser::load_from_file(path).expect("error to load updated file");
     let eq = len + d_len == analizer.dict.len();
     assert!(eq, "the number of records does not converge");
-    let eq = other_analizer.chunk_partitioning == analizer.chunk_partitioning;
+    let eq = oter_p == analizer.chunk_partitioning;
     assert!(eq, "the chunk partitioning does not converge");
 
     fs::remove_file(path);

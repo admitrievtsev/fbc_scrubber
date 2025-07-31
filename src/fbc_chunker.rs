@@ -1,8 +1,10 @@
 use std::collections::{HashMap, VecDeque};
-use std::fs;
 use std::hash::{DefaultHasher, Hasher};
 use std::string::String;
 use std::vec::Vec;
+
+use dashmap::DashMap;
+use std::sync::Arc;
 
 use crate::fbc_chunker::FBCChunk::{Sharped, Solid};
 use crate::frequency_analyser::DictRecord;
@@ -10,7 +12,6 @@ use crate::hash_chunk;
 
 // Parameter of FSChunker
 pub type FBCHash = u128;
-
 
 enum FBCChunk {
     Solid(Vec<u8>),
@@ -37,19 +38,18 @@ pub struct ChunkerFBC {
     chunks: HashMap<FBCHash, FBCChunk>,
 }
 
-
 #[allow(dead_code)]
 impl ChunkerFBC {
     /// hash chunk and insert solid chunk in chunks
     // maybe add_chunk ?
     fn insert_chunk(&mut self, chunk: &[u8]) -> FBCHash {
         let hash = hash_chunk(chunk);
-        self.chunks.insert(hash, Solid(chunk.to_vec()));
+        self.chunks.entry(hash).or_insert(Solid(chunk.to_vec()));
         hash
     }
     fn insert_chunk_vec(&mut self, chunk: Vec<u8>) -> FBCHash {
         let hash = hash_chunk(chunk.as_slice());
-        self.chunks.insert(hash, Solid(chunk));
+        self.chunks.entry(hash).or_insert(Solid(chunk));
         hash
     }
     // maybe insert_cdc_chunk ?
@@ -74,10 +74,9 @@ impl ChunkerFBC {
     }
 
      */
-    fn reconstruct_chunk_from_hash(&self, hash: &FBCHash, mut depth: u32) -> Vec<u8> {
-        let mut main_chunk: Vec<u8> = vec![];
+    fn reconstruct_chunk_from_hash<'a>(&'a self, mut prev: Vec<&'a Vec<u8>>, hash: &FBCHash, mut _depth: u32) -> Vec<&'a Vec<u8>> {
         match self.chunks.get(hash).expect("Chunk NPE") {
-            Solid(chunk) => main_chunk.append(&mut chunk.clone()),
+            Solid(chunk) => prev.push(chunk),
             Sharped(chunks) => {
                 // print!("{depth}, {} {}", chunks.len(), hash);
                 // for it in chunks.iter() {
@@ -85,23 +84,18 @@ impl ChunkerFBC {
                 // }
                 // println!();
 
-                depth += 1;
-                main_chunk.append(&mut self.reconstruct_chunk(chunks, depth))
+                _depth += 1;
+                for it in chunks {
+                    prev = Self::reconstruct_chunk_from_hash(self, prev, it, _depth);
+                }
             }
         }
-        main_chunk
+        prev
     }
 
-    fn reconstruct_chunk(&self, hashes: &Vec<FBCHash>, depth: u32) -> Vec<u8> {
-        let mut main_chunk: Vec<u8> = vec![];
 
-        for hash in hashes {
-            main_chunk.append(&mut Self::reconstruct_chunk_from_hash(self, hash, depth));
-        }
-        main_chunk
-    }
-    //Method that write text dedup out || DEBUG ONLY
-    pub fn reduplicate(&self, file_out: &str) -> usize {
+   // Method that write text dedup out
+    pub fn reduplicate(&self, expected_size: usize) -> Vec<u8> {
         // let mut file = fs::OpenOptions::new()
         //     .create(true)
         //     .write(true)
@@ -115,24 +109,25 @@ impl ChunkerFBC {
         // }
         // println!("{}", all_len);
         // all_len
-        let mut all = Vec::new();
+        let mut all = Vec::with_capacity(expected_size);
         for id in self.chunk_ids.iter() {
-            all.append(&mut Self::reconstruct_chunk_from_hash(
-                self, id, 0,
-            ));
+            for it in Self::reconstruct_chunk_from_hash(self, Vec::new(), id, 0) {
+                for c in it {
+                    all.push(*c);
+                }
+            }
         }
-        //println!("PRINT TO FILE");
-        println!("{}", all.len());
-        fs::write(file_out, &all).expect("Unable to write the file");
-        all.len()
+        all
     }
     pub fn reduplicate_by_chunks(&self) -> String {
         let mut string_out = String::new();
         for id in self.chunk_ids.iter() {
             string_out.push_str("{\n");
-            string_out.push_str(&String::from_utf8_lossy(Self::reconstruct_chunk_from_hash(
-                self, id, 0,
-            ).as_slice()));
+            for it in Self::reconstruct_chunk_from_hash(self, Vec::new(), id, 0) {
+                string_out.push_str(&String::from_utf8_lossy(
+                    it.clone().as_slice()
+                ));
+            }
             string_out.push_str("\n}\n");
         }
         //println!("PRINT TO FILE");
@@ -144,9 +139,11 @@ impl ChunkerFBC {
     /// if approach big and small sizes win is the first one specified
     pub fn fbc_dedup(
         &mut self,
-        dict: &HashMap<FBCHash, DictRecord>,
+        dict: Arc<DashMap<FBCHash, DictRecord>>,
         chunk_partitioning: &[(usize, usize)],
-    ) -> usize {
+    ) {
+        let mut fs = 0;
+        let mut fd = 0;
         let min_chunk_size = chunk_partitioning
             .iter()
             .map(|x| x.0)
@@ -159,7 +156,7 @@ impl ChunkerFBC {
         }
 
         while !chunk_deque.is_empty() {
-            if k % 100 == 0 {
+            if k % 100000 == 0 {
                 println!("Checked: {}", chunk_deque.len())
             }
             k += 1;
@@ -181,32 +178,45 @@ impl ChunkerFBC {
             let mut chunk_char = 0;
             while (chunk_char as i128) < unchecked_chunk.len() as i128 - min_chunk_size as i128 {
                 let mut chunk_hash = 0;
-                let mut dict_rec = None;
+                let mut chunck_len = None;
 
                 for (size, _) in chunk_partitioning.iter() {
                     if (chunk_char as i128) + (*size as i128) < unchecked_chunk.len() as i128 + 1 {
                         chunk_hash = hash_chunk(&unchecked_chunk[chunk_char..chunk_char + size]);
                         if dict.contains_key(&chunk_hash) {
                             // dist record have hash
-                            dict_rec = dict.get(&chunk_hash);
+                            // println!("found in dict {fd}");
+                            chunck_len = Some(*size);
+                            
+                            fd += 1;
+
+                            break;
+                        }
+                        if self.chunks.contains_key(&chunk_hash) {
+                            // dist record have hash
+                            // println!("found in self.chunks {fs}");
+                            chunck_len = Some(*size);
+                            
+                            fs += 1;
+                            
                             break;
                         }
                     }
                 }
 
-                if let Some(dict_rec) = dict_rec {
+                if let Some(chunck_len) = chunck_len {
                     if chunk_char == 0 {
                         // if big chunk start from is known
 
                         // let clone = unchecked_chunk.clone();
-                        let new_chunk = unchecked_chunk[dict_rec.get_len()..].to_vec();
+                        let new_chunk = unchecked_chunk[chunck_len..].to_vec();
                         let new_hash = self.insert_chunk_vec(new_chunk.clone());
 
                         // add new chunk for analize
                         chunk_deque.push_front(new_hash);
 
                         self.replace_all_two(chunk_index, chunk_hash, new_hash);
-                    } else if chunk_char + dict_rec.get_len() == unchecked_chunk.len() {
+                    } else if chunk_char + chunck_len == unchecked_chunk.len() {
                         // if is known chunk in end of big chunk
 
                         let new_chunk = unchecked_chunk[..chunk_char].to_vec();
@@ -222,7 +232,7 @@ impl ChunkerFBC {
                         let new_chunk_1st = unchecked_chunk[..chunk_char].to_vec();
                         //end
                         let new_chunk_2st =
-                            unchecked_chunk[chunk_char + dict_rec.get_len()..].to_vec();
+                            unchecked_chunk[chunk_char + chunck_len..].to_vec();
 
                         let new_hash_1st = self.insert_chunk_vec(new_chunk_1st);
                         let new_hash_2nd = self.insert_chunk_vec(new_chunk_2st);
@@ -234,17 +244,41 @@ impl ChunkerFBC {
                     }
 
                     if !self.chunks.contains_key(&chunk_hash) {
-                        let _ = self.insert_chunk(dict_rec.get_chunk_ref());
+                        let _ = self.insert_chunk(dict.get(&chunk_hash).unwrap().get_chunk_ref());
                     }
+
                     break;
                 } else {
                     chunk_char += 1;
                 }
             }
         }
-        println!("{}", self.dict_size() + self.chunk_ids.len() * 8);
+        println!("f self {fs} f dict {fd}");
+    }
 
-        self.dict_size() + self.chunk_ids.len() * 8
+    pub fn get_dedup_len(&self) -> usize {
+        let mut all_size = 0;
+        let mut all_len = 0;
+
+        for it in &self.chunk_ids {
+            let mut q_res = Vec::with_capacity(50);
+            q_res.push(*it);
+
+            while !q_res.is_empty() {
+                match self.chunks.get(&q_res.pop().unwrap()).unwrap() {
+                    FBCChunk::Solid(chunk) => {
+                        all_size += chunk.len();
+                        all_len += 1;
+                    }
+                    FBCChunk::Sharped(chunk) => {
+                        for it in chunk {
+                            q_res.push(*it);
+                        }
+                    }
+                }
+            }
+        }
+        all_size + all_len * 8
     }
 
     /// return size of solid chunks
@@ -300,19 +334,18 @@ impl ChunkerFBC {
                 // len of chunk + self hash
                 FBCChunk::Sharped(chunks) => {
                     chunks.len() * size_of::<FBCHash>() + size_of::<usize>() + size_of::<FBCHash>()
-                }
-                // len of chunks    self hash
+                } // len of chunks    self hash
             }
         })
     }
 }
 
-mod test {    
+mod test {
     #[test]
     fn fbc_chunker_dedup_test() {
-        use crate::{FrequencyAnalyser, ChunkerFBC, hash_chunk};
         use crate::fbc_chunker::FBCChunk;
-    
+        use crate::{hash_chunk, ChunkerFBC, FrequencyAnalyser};
+
         let mut chunker = ChunkerFBC::default();
 
         {
@@ -323,7 +356,7 @@ mod test {
             let data_1_hash = hash_chunk(data_1);
             analyser.append_dict(data_1);
 
-            chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
+            chunker.fbc_dedup(analyser.get_dict(), analyser.get_chunk_partitioning());
 
             let res = if let FBCChunk::Solid(res) = chunker.chunks.get(&data_1_hash).unwrap() {
                 res
@@ -350,7 +383,7 @@ mod test {
             analyser.append_dict(data_1);
             analyser.append_dict(data_2);
 
-            chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
+            chunker.fbc_dedup(analyser.get_dict(), analyser.get_chunk_partitioning());
 
             assert_eq!(chunker.chunks.len(), 3, "chunks len not expected");
             let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_prev_hash).unwrap() {
@@ -380,7 +413,7 @@ mod test {
 
             analyser.append_dict(data);
 
-            chunker.fbc_dedup(&analyser.get_dict(), analyser.get_chunk_partitioning());
+            chunker.fbc_dedup(analyser.get_dict(), analyser.get_chunk_partitioning());
 
             assert_eq!(chunker.chunks.len(), 3 + 1, "chunks len not expected");
             let res = if let FBCChunk::Sharped(res) = chunker.chunks.get(&data_hash).unwrap() {
