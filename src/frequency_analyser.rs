@@ -696,7 +696,6 @@ fn fbc_save_load_analizer_test() {
     let _ = fs::remove_file(file);
 }
 
-
 #[test]
 #[ignore]
 fn fbc_load_hashes_analizer_test() {
@@ -760,7 +759,8 @@ fn fbc_update_analizer_test() {
             .map(|(_, b)| b)
             .collect::<Vec<DictRecord>>()
             .as_slice(),
-    ).expect("upgrade fail");
+    )
+    .expect("upgrade fail");
 
     let analizer = FrequencyAnalyser::load_from_file(path).expect("error to load updated file");
     let eq = len + d_len == analizer.dict.len();
