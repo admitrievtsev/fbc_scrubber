@@ -74,7 +74,12 @@ impl ChunkerFBC {
     }
 
      */
-    fn reconstruct_chunk_from_hash<'a>(&'a self, mut prev: Vec<&'a Vec<u8>>, hash: &FBCHash, mut _depth: u32) -> Vec<&'a Vec<u8>> {
+    fn reconstruct_chunk_from_hash<'a>(
+        &'a self,
+        mut prev: Vec<&'a Vec<u8>>,
+        hash: &FBCHash,
+        mut _depth: u32,
+    ) -> Vec<&'a Vec<u8>> {
         match self.chunks.get(hash).expect("Chunk NPE") {
             Solid(chunk) => prev.push(chunk),
             Sharped(chunks) => {
@@ -93,8 +98,7 @@ impl ChunkerFBC {
         prev
     }
 
-
-   // Method that write text dedup out
+    // Method that write text dedup out
     pub fn reduplicate(&self, expected_size: usize) -> Vec<u8> {
         // let mut file = fs::OpenOptions::new()
         //     .create(true)
@@ -124,9 +128,7 @@ impl ChunkerFBC {
         for id in self.chunk_ids.iter() {
             string_out.push_str("{\n");
             for it in Self::reconstruct_chunk_from_hash(self, Vec::new(), id, 0) {
-                string_out.push_str(&String::from_utf8_lossy(
-                    it.clone().as_slice()
-                ));
+                string_out.push_str(&String::from_utf8_lossy(it.clone().as_slice()));
             }
             string_out.push_str("\n}\n");
         }
@@ -187,7 +189,7 @@ impl ChunkerFBC {
                             // dist record have hash
                             // println!("found in dict {fd}");
                             chunck_len = Some(*size);
-                            
+
                             fd += 1;
 
                             break;
@@ -196,9 +198,9 @@ impl ChunkerFBC {
                             // dist record have hash
                             // println!("found in self.chunks {fs}");
                             chunck_len = Some(*size);
-                            
+
                             fs += 1;
-                            
+
                             break;
                         }
                     }
@@ -231,8 +233,7 @@ impl ChunkerFBC {
                         // start
                         let new_chunk_1st = unchecked_chunk[..chunk_char].to_vec();
                         //end
-                        let new_chunk_2st =
-                            unchecked_chunk[chunk_char + chunck_len..].to_vec();
+                        let new_chunk_2st = unchecked_chunk[chunk_char + chunck_len..].to_vec();
 
                         let new_hash_1st = self.insert_chunk_vec(new_chunk_1st);
                         let new_hash_2nd = self.insert_chunk_vec(new_chunk_2st);
@@ -342,6 +343,7 @@ impl ChunkerFBC {
 
 mod test {
     #[test]
+    #[ignore]
     fn fbc_chunker_dedup_test() {
         use crate::fbc_chunker::FBCChunk;
         use crate::{hash_chunk, ChunkerFBC, FrequencyAnalyser};

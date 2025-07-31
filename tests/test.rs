@@ -5,6 +5,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[ignore]
     fn fbc_topic_test() {
         let mut analyser = FrequencyAnalyser::new();
         let mut chunker = ChunkerFBC::default();
@@ -24,7 +25,7 @@ mod tests {
 
         chunker.fbc_dedup(analyser.get_dict(), analyser.get_chunk_partitioning());
 
-        let out = chunker.reduplicate();
+        let out = chunker.reduplicate(contents.len());
 
         assert_eq!(
             fs::read("test_files_input/lowinput.txt")

@@ -134,8 +134,8 @@ fn main() {
                              // "orient_express_input.txt",
     ];
     let dts = [
-        512,
-        KB,
+        // 512,
+        // KB,
         2 * KB,
         4 * KB,
         6 * KB,
@@ -160,8 +160,8 @@ fn main() {
     let all_sizes: &[Vec<usize>] = &[
         // [64].to_vec(),
         // [128].to_vec(),
-        [256].to_vec(),
-        [512].to_vec(),
+        // [256].to_vec(),
+        // [512].to_vec(),
         [1024].to_vec(),
         [2048].to_vec(),
         [4096].to_vec(),
@@ -201,7 +201,7 @@ fn main() {
         pre_f(name, all_sizes_flat.clone());
         for sizes in all_sizes.iter() {
             for dt in dts {
-                if dt < sizes[0] {
+                if dt < sizes[0] || (dt as f64) / (sizes[0] as f64) > 7.0 {
                     continue;
                 }
                 let mut this_out = String::new();
